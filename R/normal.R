@@ -1,0 +1,804 @@
+#' Normal mixture distribution
+#'
+#' Finite mixture of normal components for real-valued bulk modeling. This topic provides the
+#' scalar mixture density, CDF, RNG, and quantile functions used by the bulk-only normal kernel in
+#' the package registry.
+#'
+#' With weights \eqn{w_k}, means \eqn{\mu_k}, and standard deviations \eqn{\sigma_k}, the mixture
+#' density is
+#' \deqn{
+#' f(x) = \sum_{k = 1}^K \tilde{w}_k \phi(x \mid \mu_k, \sigma_k^2),
+#' }
+#' where \eqn{\tilde{w}_k = w_k / \sum_j w_j}. These uppercase functions are scalar
+#' NIMBLE-compatible building blocks. For vectorized R usage, use [normal_lowercase()].
+#'
+#' @param x Numeric scalar giving the point at which the density is evaluated.
+#' @param q Numeric scalar giving the point at which the distribution function is evaluated.
+#' @param p Numeric scalar probability in \eqn{(0,1)} for the quantile function.
+#' @param n Integer giving the number of draws. The RNG implementation supports \code{n = 1}.
+#' @param w Numeric vector of mixture weights of length \eqn{K}. The functions normalize \code{w}
+#'   internally when needed.
+#' @param mean,sd Numeric vectors of length \eqn{K} giving component means and standard deviations.
+#' @param log Integer flag \code{0/1}; if \code{1}, return the log-density.
+#' @param lower.tail Integer flag \code{0/1}; if \code{1} (default), probabilities are \eqn{P(X \le q)}.
+#' @param log.p Integer flag \code{0/1}; if \code{1}, probabilities are returned on the log scale.
+#' @param tol Numeric scalar tolerance passed to \code{stats::uniroot}.
+#' @param maxiter Integer maximum number of iterations for \code{stats::uniroot}.
+#'
+#' @return Density/CDF/RNG functions return numeric scalars. `qNormMix()` returns a numeric vector
+#'   with the same length as `p`.
+#'
+#' @details
+#' If \eqn{F_k} denotes the \eqn{k}-th component CDF, then the mixture distribution function is
+#' \deqn{
+#' F(x) = \sum_{k=1}^K \tilde{w}_k F_k(x)
+#' = \sum_{k=1}^K \tilde{w}_k \Phi\left(\frac{x-\mu_k}{\sigma_k}\right).
+#' }
+#' Random generation first draws a component index with probability \eqn{\tilde{w}_k} and then
+#' generates from the corresponding normal law. The quantile function has no closed form for a
+#' general finite mixture, so \code{qNormMix()} solves \eqn{F(x)=p} numerically by bracketing the
+#' root and applying \code{stats::uniroot()}.
+#'
+#' The mixture mean is
+#' \deqn{
+#' E(X) = \sum_{k=1}^K \tilde{w}_k \mu_k,
+#' }
+#' which is the analytical mean used by the package when a normal-mixture draw contributes to a
+#' posterior predictive mean calculation.
+#'
+#' @seealso [normal_mixgpd()], [normal_gpd()], [normal_lowercase()], [build_nimble_bundle()],
+#'   [kernel_support_table()].
+#' @family normal kernel families
+#'
+#' @examples
+#' w <- c(0.60, 0.25, 0.15)
+#' mean <- c(-1, 0.5, 2.0)
+#' sd <- c(1.0, 0.7, 1.3)
+#'
+#' dNormMix(0.5, w = w, mean = mean, sd = sd, log = FALSE)
+#' pNormMix(0.5, w = w, mean = mean, sd = sd,
+#'         lower.tail = TRUE, log.p = FALSE)
+#' qNormMix(0.50, w = w, mean = mean, sd = sd)
+#' qNormMix(0.95, w = w, mean = mean, sd = sd)
+#' replicate(10, rNormMix(1, w = w, mean = mean, sd = sd))
+#' @rdname normal_mix
+#' @name normal_mix
+#' @aliases dNormMix pNormMix rNormMix qNormMix
+#' @importFrom stats uniroot pnorm dnorm runif qnorm rnorm
+NULL
+
+#' @describeIn normal_mix Normal mixture density
+#' @export
+dNormMix <- nimble::nimbleFunction(
+  run = function(x = double(0),
+                 w = double(1),
+                 mean = double(1),
+                 sd = double(1),
+                 log = integer(0, default = 0)) {
+    returnType(double(0))
+    eps <- 1e-300
+
+    K <- length(w)
+
+    wsum <- 0.0
+    for (j in 1:K) wsum <- wsum + w[j]
+    if (wsum <= 0.0) {
+      if (log == 1) return(log(eps)) else return(eps)
+    }
+
+    s0 <- 0.0
+    for (j in 1:K) {
+      s0 <- s0 + (w[j] / wsum) * dnorm(x, mean[j], sd[j], 0)
+    }
+
+    if (s0 < eps) s0 <- eps
+    if (log == 1) return(log(s0)) else return(s0)
+  }
+)
+
+#' @describeIn normal_mix Normal mixture distribution function
+#' @export
+pNormMix <- nimble::nimbleFunction(
+  run = function(q = double(0),
+                 w = double(1),
+                 mean = double(1),
+                 sd = double(1),
+                 lower.tail = integer(0, default = 1),
+                 log.p = integer(0, default = 0)) {
+    returnType(double(0))
+    eps <- 1e-300
+
+    K <- length(w)
+
+    wsum <- 0.0
+    for (j in 1:K) wsum <- wsum + w[j]
+    if (wsum <= 0.0) {
+      cdf0 <- 0.0
+      if (lower.tail == 0) cdf0 <- 1.0
+      if (log.p == 1) return(log(max(cdf0, eps))) else return(cdf0)
+    }
+
+    cdf <- 0.0
+    for (j in 1:K) {
+      cdf <- cdf + (w[j] / wsum) * pnorm(q, mean[j], sd[j], 1, 0)
+    }
+
+    if (is.nan(cdf)) cdf <- 0.0
+    if (cdf < 0.0) cdf <- 0.0
+    if (cdf > 1.0) cdf <- 1.0
+    if (lower.tail == 0) cdf <- 1.0 - cdf
+    if (log.p == 1) return(log(max(cdf, eps))) else return(cdf)
+  }
+)
+
+#' @describeIn normal_mix Normal mixture random generation
+#' @export
+rNormMix <- nimble::nimbleFunction(
+  run = function(n = integer(0),
+                 w = double(1),
+                 mean = double(1),
+                 sd = double(1)) {
+    returnType(double(0))
+
+    if (n != 1) return(0.0)
+
+    K <- length(w)
+    wsum <- 0.0
+    for (j in 1:K) wsum <- wsum + w[j]
+    if (wsum <= 0.0) return(0.0)
+
+    u <- runif(1, 0.0, wsum)
+    cw <- 0.0
+    idx <- 1
+    found <- 0
+    for (j in 1:K) {
+      cw <- cw + w[j]
+      if (found == 0) {
+        if (u <= cw) {
+          idx <- j
+          found <- 1
+        }
+      }
+    }
+    return(rnorm(1, mean[idx], sd[idx]))
+  }
+)
+
+#' @describeIn normal_mix Normal mixture quantile function
+#' @export
+qNormMix <- function(p, w, mean, sd,
+                     lower.tail = TRUE, log.p = FALSE,
+                     tol = 1e-10, maxiter = 200) {
+  if (log.p) p <- exp(p)
+  if (!lower.tail) p <- 1 - p
+  p <- pmax(pmin(p, 1), 0)
+
+  out <- numeric(length(p))
+  for (i in seq_along(p)) {
+    pi <- p[i]
+    if (pi <= 0) { out[i] <- -Inf; next }
+    if (pi >= 1) { out[i] <- Inf; next }
+
+    lo <- min(stats::qnorm(pi, mean = mean, sd = sd), na.rm = TRUE)
+    hi <- max(stats::qnorm(pi, mean = mean, sd = sd), na.rm = TRUE)
+    if (!is.finite(lo)) lo <- -1e20
+    if (!is.finite(hi)) hi <- 1e20
+    if (lo == hi) {
+      out[i] <- lo
+    } else {
+      f_lo <- as.numeric(pNormMix(lo, w = w, mean = mean, sd = sd, lower.tail = 1, log.p = 0) - pi)
+      f_hi <- as.numeric(pNormMix(hi, w = w, mean = mean, sd = sd, lower.tail = 1, log.p = 0) - pi)
+      iter <- 0L
+      while (is.finite(f_lo) && f_lo > 0 && lo > -1e20 && iter < 60L) {
+        step <- max(1, abs(lo))
+        lo <- lo - step
+        f_lo <- as.numeric(pNormMix(lo, w = w, mean = mean, sd = sd, lower.tail = 1, log.p = 0) - pi)
+        iter <- iter + 1L
+      }
+      iter <- 0L
+      while (is.finite(f_hi) && f_hi < 0 && hi < 1e20 && iter < 60L) {
+        step <- max(1, abs(hi))
+        hi <- hi + step
+        f_hi <- as.numeric(pNormMix(hi, w = w, mean = mean, sd = sd, lower.tail = 1, log.p = 0) - pi)
+        iter <- iter + 1L
+      }
+      if (!is.finite(lo) || !is.finite(hi) || lo >= hi || !is.finite(f_lo) || !is.finite(f_hi) || f_lo * f_hi > 0) {
+        out[i] <- NA_real_
+      } else {
+        out[i] <- stats::uniroot(
+          function(z) pNormMix(z, w = w, mean = mean, sd = sd, lower.tail = 1, log.p = 0) - pi,
+          interval = c(lo, hi),
+          tol = tol, maxiter = maxiter
+        )$root
+      }
+    }
+  }
+  out
+}
+
+meanNormMix <- function(w, mean, sd) {
+  ww <- .mean_norm_mix_weights(w)
+  if (is.null(ww)) return(NA_real_)
+  mu <- as.numeric(mean)
+  sig <- as.numeric(sd)
+  if (length(mu) != length(ww) || length(sig) != length(ww)) return(NA_real_)
+  if (any(!is.finite(mu)) || any(!is.finite(sig)) || any(sig <= 0)) return(NA_real_)
+  sum(ww * mu)
+}
+
+meanNormMixTrunc <- function(w, mean, sd, threshold) {
+  ww <- .mean_norm_mix_weights(w)
+  if (is.null(ww)) return(NA_real_)
+  mu <- as.numeric(mean)
+  sig <- as.numeric(sd)
+  u <- as.numeric(threshold)[1]
+  if (length(mu) != length(ww) || length(sig) != length(ww)) return(NA_real_)
+  if (is.na(u) || any(!is.finite(mu)) || any(!is.finite(sig)) || any(sig <= 0)) return(NA_real_)
+  a <- (u - mu) / sig
+  sum(ww * (mu * stats::pnorm(a) - sig * stats::dnorm(a)))
+}
+
+# -------------------------------
+# Normal mixture + GPD tail
+# -------------------------------
+
+#' Normal mixture with a GPD tail
+#'
+#' Spliced bulk-tail family formed by attaching a generalized Pareto tail to a normal mixture bulk.
+#' This matches the structure used by the package's normal `mixgpd` kernels.
+#'
+#' If \eqn{F_{mix}} denotes the normal-mixture CDF, the spliced CDF is
+#' \deqn{
+#' F(x) =
+#' \left\{
+#' \begin{array}{ll}
+#' F_{mix}(x), & x < u, \\
+#' F_{mix}(u) + \{1 - F_{mix}(u)\} G(x), & x \ge u,
+#' \end{array}
+#' \right.
+#' }
+#' where `threshold = u` and \eqn{G} is the GPD CDF.
+#'
+#' @param x Numeric scalar giving the point at which the density is evaluated.
+#' @param q Numeric scalar giving the point at which the distribution function is evaluated.
+#' @param p Numeric scalar probability in \eqn{(0,1)} for the quantile function.
+#' @param n Integer giving the number of draws. The RNG implementation supports \code{n = 1}.
+#' @param w Numeric vector of mixture weights of length \eqn{K}.
+#' @param mean,sd Numeric vectors of length \eqn{K} giving component means and standard deviations.
+#' @param threshold Numeric scalar threshold at which the GPD tail is attached.
+#' @param tail_scale Numeric scalar GPD scale parameter; must be positive.
+#' @param tail_shape Numeric scalar GPD shape parameter.
+#' @param log Integer flag \code{0/1}; if \code{1}, return the log-density.
+#' @param lower.tail Integer flag \code{0/1}; if \code{1} (default), probabilities are \eqn{P(X \le q)}.
+#' @param log.p Integer flag \code{0/1}; if \code{1}, probabilities are returned on the log scale.
+#' @param tol Numeric scalar tolerance passed to \code{stats::uniroot}.
+#' @param maxiter Integer maximum number of iterations for \code{stats::uniroot}.
+#'
+#' @return Spliced density/CDF/RNG functions return numeric scalars. `qNormMixGpd()` returns a
+#'   numeric vector with the same length as `p`.
+#'
+#' @details
+#' The construction keeps the normal mixture unchanged below the threshold \eqn{u} and replaces the
+#' upper tail by a generalized Pareto exceedance model. Writing \eqn{F_{mix}(u)=p_u}, the spliced
+#' density is
+#' \deqn{
+#' f(x) =
+#' \left\{
+#' \begin{array}{ll}
+#' f_{mix}(x), & x < u, \\
+#' \{1-p_u\} g_{GPD}(x \mid u,\sigma_u,\xi), & x \ge u.
+#' \end{array}
+#' \right.
+#' }
+#' This formulation preserves total probability because the GPD is attached only to the residual
+#' survival mass above the bulk threshold.
+#'
+#' The quantile is piecewise. If \eqn{p \le p_u}, \code{qNormMixGpd()} inverts the bulk mixture
+#' CDF; otherwise it rescales the tail probability to \eqn{(p-p_u)/(1-p_u)} and applies the
+#' closed-form GPD quantile. That same piecewise logic is what the fitted-model prediction code
+#' uses draw by draw.
+#'
+#' @seealso [normal_mix()], [normal_gpd()], [gpd()], [normal_lowercase()], [dpmgpd()].
+#' @family normal kernel families
+#' @examples
+#' w <- c(0.60, 0.25, 0.15)
+#' mean <- c(-1, 0.5, 2.0)
+#' sd <- c(1.0, 0.7, 1.3)
+#' threshold <- 2
+#' tail_scale <- 1.0
+#' tail_shape <- 0.2
+#'
+#' dNormMixGpd(3.0, w, mean, sd, threshold, tail_scale, tail_shape, log = FALSE)
+#' pNormMixGpd(3.0, w, mean, sd, threshold, tail_scale, tail_shape,
+#'            lower.tail = TRUE, log.p = FALSE)
+#' qNormMixGpd(0.50, w, mean, sd, threshold, tail_scale, tail_shape)
+#' qNormMixGpd(0.95, w, mean, sd, threshold, tail_scale, tail_shape)
+#' replicate(10, rNormMixGpd(1, w, mean, sd, threshold, tail_scale, tail_shape))
+#' @rdname normal_mixgpd
+#' @name normal_mixgpd
+#' @aliases dNormMixGpd pNormMixGpd rNormMixGpd qNormMixGpd
+#' @importFrom stats uniroot pnorm dnorm runif qnorm rnorm
+NULL
+
+#' @describeIn normal_mixgpd Normal mixture + GPD tail density
+#' @export
+dNormMixGpd <- nimble::nimbleFunction(
+  run = function(x = double(0),
+                 w = double(1),
+                 mean = double(1),
+                 sd = double(1),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 log = integer(0, default = 0)) {
+    returnType(double(0))
+    eps <- 1e-300
+
+    if (x < threshold) return(dNormMix(x, w, mean, sd, log))
+
+    Fu <- pNormMix(threshold, w, mean, sd, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    val <- (1.0 - Fu) * dGpd(x, threshold, tail_scale, tail_shape, 0)
+    if (val < eps) val <- eps
+    if (log == 1) return(log(val)) else return(val)
+  }
+)
+
+#' @describeIn normal_mixgpd Normal mixture + GPD tail distribution function
+#' @export
+pNormMixGpd <- nimble::nimbleFunction(
+  run = function(q = double(0),
+                 w = double(1),
+                 mean = double(1),
+                 sd = double(1),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 lower.tail = integer(0, default = 1),
+                 log.p = integer(0, default = 0)) {
+    returnType(double(0))
+    eps <- 1e-300
+
+    if (q < threshold) return(pNormMix(q, w, mean, sd, lower.tail, log.p))
+
+    Fu <- pNormMix(threshold, w, mean, sd, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    G <- pGpd(q, threshold, tail_scale, tail_shape, 1, 0)
+    cdf <- Fu + (1.0 - Fu) * G
+
+    if (is.nan(cdf)) cdf <- 0.0
+    if (cdf < 0.0) cdf <- 0.0
+    if (cdf > 1.0) cdf <- 1.0
+    if (lower.tail == 0) cdf <- 1.0 - cdf
+    if (log.p == 1) return(log(max(cdf, eps))) else return(cdf)
+  }
+)
+
+#' @describeIn normal_mixgpd Normal mixture + GPD tail random generation
+#' @export
+rNormMixGpd <- nimble::nimbleFunction(
+  run = function(n = integer(0),
+                 w = double(1),
+                 mean = double(1),
+                 sd = double(1),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0)) {
+    returnType(double(0))
+
+    if (n != 1) return(0.0)
+
+    Fu <- pNormMix(threshold, w, mean, sd, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    uu <- runif(1, 0.0, 1.0)
+    if (uu < Fu) return(rNormMix(1, w, mean, sd))
+    return(rGpd(1, threshold, tail_scale, tail_shape))
+  }
+)
+
+#' @describeIn normal_mixgpd Normal mixture + GPD tail quantile function
+#' @export
+qNormMixGpd <- function(p, w, mean, sd, threshold, tail_scale, tail_shape,
+                        lower.tail = TRUE, log.p = FALSE,
+                        tol = 1e-10, maxiter = 200) {
+  if (log.p) p <- exp(p)
+  if (!lower.tail) p <- 1 - p
+  p <- pmax(pmin(p, 1), 0)
+
+  Fu <- pNormMix(threshold, w, mean, sd, 1, 0)
+  out <- numeric(length(p))
+
+  for (i in seq_along(p)) {
+    pi <- p[i]
+    if (pi <= Fu) {
+      out[i] <- qNormMix(pi, w, mean, sd, lower.tail = TRUE, log.p = FALSE, tol = tol, maxiter = maxiter)
+    } else {
+      g <- if (Fu >= 1) 0 else (pi - Fu) / (1 - Fu)
+      out[i] <- qGpd(g, threshold = threshold, scale = tail_scale, shape = tail_shape)
+    }
+  }
+  out
+}
+
+# -------------------------------
+# Single Normal + GPD tail
+# -------------------------------
+
+#' Normal with a GPD tail
+#'
+#' Spliced family obtained by attaching a generalized Pareto tail above `threshold` to a single
+#' normal bulk component.
+#'
+#' @param x Numeric scalar giving the point at which the density is evaluated.
+#' @param q Numeric scalar giving the point at which the distribution function is evaluated.
+#' @param p Numeric scalar probability in \eqn{(0,1)} for the quantile function.
+#' @param n Integer giving the number of draws. The RNG implementation supports \code{n = 1}.
+#' @param mean Numeric scalar mean parameter for the Normal bulk.
+#' @param sd Numeric scalar standard deviation for the Normal bulk.
+#' @param threshold Numeric scalar threshold at which the GPD tail is attached.
+#' @param tail_scale Numeric scalar GPD scale parameter; must be positive.
+#' @param tail_shape Numeric scalar GPD shape parameter.
+#' @param log Integer flag \code{0/1}; if \code{1}, return the log-density.
+#' @param lower.tail Integer flag \code{0/1}; if \code{1} (default), probabilities are \eqn{P(X \le q)}.
+#' @param log.p Integer flag \code{0/1}; if \code{1}, probabilities are returned on the log scale.
+#'
+#' @return Spliced density/CDF/RNG functions return numeric scalars. `qNormGpd()` returns a numeric
+#'   vector with the same length as `p`.
+#'
+#' @details
+#' This is the single-component version of [normal_mixgpd()]. If \eqn{\Phi_u =
+#' \Phi((u-\mu)/\sigma)} denotes the normal bulk probability below the threshold, then the density
+#' is
+#' \deqn{
+#' f(x) =
+#' \left\{
+#' \begin{array}{ll}
+#' \phi(x \mid \mu, \sigma^2), & x < u, \\
+#' (1-\Phi_u) g_{GPD}(x \mid u,\sigma_u,\xi), & x \ge u.
+#' \end{array}
+#' \right.
+#' }
+#' The distribution is continuous at \eqn{u} by construction, although the derivative generally
+#' changes there because the tail is modeled by a different family.
+#'
+#' The ordinary mean exists only when the GPD tail satisfies \eqn{\xi < 1}. When that condition
+#' fails, downstream mean prediction is intentionally blocked and the package directs the user to
+#' restricted means or quantile-based summaries instead.
+#'
+#' @seealso [normal_mix()], [normal_mixgpd()], [gpd()], [normal_lowercase()].
+#' @family normal kernel families
+#' @examples
+#' mean <- 0.5
+#' sd <- 1.0
+#' threshold <- 2
+#' tail_scale <- 1.0
+#' tail_shape <- 0.2
+#'
+#' dNormGpd(3.0, mean, sd, threshold, tail_scale, tail_shape, log = FALSE)
+#' pNormGpd(3.0, mean, sd, threshold, tail_scale, tail_shape,
+#'         lower.tail = TRUE, log.p = FALSE)
+#' qNormGpd(0.50, mean, sd, threshold, tail_scale, tail_shape)
+#' qNormGpd(0.95, mean, sd, threshold, tail_scale, tail_shape)
+#' replicate(10, rNormGpd(1, mean, sd, threshold, tail_scale, tail_shape))
+#' @rdname normal_gpd
+#' @name normal_gpd
+#' @aliases dNormGpd pNormGpd rNormGpd qNormGpd
+#' @importFrom stats uniroot pnorm dnorm runif qnorm rnorm
+NULL
+
+#' @describeIn normal_gpd Normal + GPD tail density
+#' @export
+dNormGpd <- nimble::nimbleFunction(
+  run = function(x = double(0),
+                 mean = double(0),
+                 sd = double(0),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 log = integer(0, default = 0)) {
+    returnType(double(0))
+    eps <- 1e-300
+
+    if (x < threshold) {
+      dens <- dnorm(x, mean, sd, 0)
+      if (dens < eps) dens <- eps
+      if (log == 1) return(log(dens)) else return(dens)
+    }
+
+    Fu <- pnorm(threshold, mean, sd, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    val <- (1.0 - Fu) * dGpd(x, threshold, tail_scale, tail_shape, 0)
+    if (val < eps) val <- eps
+    if (log == 1) return(log(val)) else return(val)
+  }
+)
+
+#' @describeIn normal_gpd Normal + GPD tail distribution function
+#' @export
+pNormGpd <- nimble::nimbleFunction(
+  run = function(q = double(0),
+                 mean = double(0),
+                 sd = double(0),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 lower.tail = integer(0, default = 1),
+                 log.p = integer(0, default = 0)) {
+    returnType(double(0))
+    eps <- 1e-300
+
+    if (q < threshold) {
+      cdf0 <- pnorm(q, mean, sd, lower.tail, log.p)
+      return(cdf0)
+    }
+
+    Fu <- pnorm(threshold, mean, sd, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    G <- pGpd(q, threshold, tail_scale, tail_shape, 1, 0)
+    cdf <- Fu + (1.0 - Fu) * G
+
+    if (is.nan(cdf)) cdf <- 0.0
+    if (cdf < 0.0) cdf <- 0.0
+    if (cdf > 1.0) cdf <- 1.0
+    if (lower.tail == 0) cdf <- 1.0 - cdf
+    if (log.p == 1) return(log(max(cdf, eps))) else return(cdf)
+  }
+)
+
+#' @describeIn normal_gpd Normal + GPD tail random generation
+#' @export
+rNormGpd <- nimble::nimbleFunction(
+  run = function(n = integer(0),
+                 mean = double(0),
+                 sd = double(0),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0)) {
+    returnType(double(0))
+
+    if (n != 1) return(0.0)
+
+    Fu <- pnorm(threshold, mean, sd, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    uu <- runif(1, 0.0, 1.0)
+    if (uu < Fu) return(rnorm(1, mean, sd))
+    return(rGpd(1, threshold, tail_scale, tail_shape))
+  }
+)
+
+#' @describeIn normal_gpd Normal + GPD tail quantile function
+#' @export
+qNormGpd <- function(p, mean, sd, threshold, tail_scale, tail_shape,
+                     lower.tail = TRUE, log.p = FALSE) {
+  if (log.p) p <- exp(p)
+  if (!lower.tail) p <- 1 - p
+  p <- pmax(pmin(p, 1), 0)
+
+  Fu <- stats::pnorm(threshold, mean = mean, sd = sd, lower.tail = TRUE, log.p = FALSE)
+  out <- numeric(length(p))
+
+  for (i in seq_along(p)) {
+    pi <- p[i]
+    if (pi <= Fu) {
+      out[i] <- stats::qnorm(pi, mean = mean, sd = sd, lower.tail = TRUE, log.p = FALSE)
+    } else {
+      g <- if (Fu >= 1) 0 else (pi - Fu) / (1 - Fu)
+      out[i] <- qGpd(g, threshold = threshold, scale = tail_scale, shape = tail_shape)
+    }
+  }
+  out
+}
+
+
+# ==========================================================
+# Lowercase vectorized R wrappers for Normal kernels
+# ==========================================================
+
+#' Lowercase vectorized normal distribution functions
+#'
+#' Vectorized R wrappers for the scalar normal-kernel topics in this file. These helpers are meant
+#' for interactive use and examples rather than direct use inside NIMBLE code.
+#'
+#' @param x Numeric vector of quantiles.
+#' @param q Numeric vector of quantiles.
+#' @param p Numeric vector of probabilities.
+#' @param n Integer number of observations to generate.
+#' @param w Numeric vector of mixture weights.
+#' @param mean,sd Numeric vectors (mix) or scalars (base+gpd) of component parameters.
+#' @param threshold,tail_scale,tail_shape GPD tail parameters (scalars).
+#' @param log Logical; if \code{TRUE}, return log-density.
+#' @param lower.tail Logical; if \code{TRUE} (default), probabilities are \eqn{P(X \le x)}.
+#' @param log.p Logical; if \code{TRUE}, probabilities are on log scale.
+#' @param tol,maxiter Tolerance and max iterations for numerical inversion.
+#'
+#' @return Numeric vector of densities, probabilities, quantiles, or random variates.
+#'
+#' @details
+#' These wrappers vectorize the scalar normal-kernel routines for ordinary R use. They preserve the
+#' same formulas, parameter meanings, and tail construction as the uppercase functions; the only
+#' change is that \code{x}, \code{q}, \code{p}, and \code{n} may now be length greater than one.
+#'
+#' For the mixture quantile and splice quantile functions, the numerical and piecewise logic is
+#' delegated directly to the corresponding scalar routine. As a result, the lowercase helpers are
+#' faithful front ends rather than separate implementations.
+#'
+#' @seealso [normal_mix()], [normal_mixgpd()], [normal_gpd()], [bundle()], [get_kernel_registry()].
+#' @family vectorized kernel helpers
+#'
+#' @examples
+#' w <- c(0.6, 0.25, 0.15)
+#' mu <- c(-1, 0.5, 2)
+#' sig <- c(1, 0.7, 1.3)
+#'
+#' # Normal mixture
+#' dnormmix(c(0, 1, 2), w = w, mean = mu, sd = sig)
+#' rnormmix(5, w = w, mean = mu, sd = sig)
+#'
+#' # Normal mixture + GPD
+#' dnormmixgpd(c(1, 2, 3), w = w, mean = mu, sd = sig,
+#'             threshold = 2, tail_scale = 1, tail_shape = 0.2)
+#'
+#' # Normal + GPD (single component)
+#' dnormgpd(c(1, 2, 3), mean = 0.5, sd = 1, threshold = 2,
+#'          tail_scale = 1, tail_shape = 0.2)
+#'
+#' @name normal_lowercase
+#' @rdname normal_lowercase
+NULL
+
+# ---- Normal Mix lowercase wrappers ----
+
+#' @describeIn normal_lowercase Normal mixture density (vectorized)
+#' @export
+dnormmix <- function(x, w, mean, sd, log = FALSE) {
+  x <- as.numeric(x)
+
+  if (length(x) == 0L) return(numeric(0L))
+  log_int <- as.integer(log)
+  vapply(x, function(xi) as.numeric(dNormMix(xi, w = w, mean = mean, sd = sd, log = log_int)),
+         numeric(1L))
+}
+
+#' @describeIn normal_lowercase Normal mixture distribution function (vectorized)
+#' @export
+pnormmix <- function(q, w, mean, sd, lower.tail = TRUE, log.p = FALSE) {
+  q <- as.numeric(q)
+  if (length(q) == 0L) return(numeric(0L))
+  lt_int <- as.integer(lower.tail)
+  lp_int <- as.integer(log.p)
+  vapply(q, function(qi) as.numeric(pNormMix(qi, w = w, mean = mean, sd = sd,
+                                              lower.tail = lt_int, log.p = lp_int)),
+         numeric(1L))
+}
+
+#' @describeIn normal_lowercase Normal mixture quantile function (vectorized)
+#' @export
+qnormmix <- function(p, w, mean, sd, lower.tail = TRUE, log.p = FALSE,
+                     tol = 1e-10, maxiter = 200) {
+  qNormMix(p, w = w, mean = mean, sd = sd, lower.tail = lower.tail,
+           log.p = log.p, tol = tol, maxiter = maxiter)
+}
+
+#' @describeIn normal_lowercase Normal mixture random generation (vectorized)
+#' @export
+rnormmix <- function(n, w, mean, sd) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) stop("'n' must be a single integer.", call. = FALSE)
+  if (n <= 0L) return(numeric(0L))
+  vapply(seq_len(n), function(i) as.numeric(rNormMix(1L, w = w, mean = mean, sd = sd)),
+         numeric(1L))
+}
+
+# ---- Normal Mix + GPD lowercase wrappers ----
+
+#' @describeIn normal_lowercase Normal mixture + GPD density (vectorized)
+#' @export
+dnormmixgpd <- function(x, w, mean, sd, threshold, tail_scale, tail_shape, log = FALSE) {
+  x <- as.numeric(x)
+  if (length(x) == 0L) return(numeric(0L))
+  log_int <- as.integer(log)
+  vapply(x, function(xi) as.numeric(dNormMixGpd(xi, w = w, mean = mean, sd = sd,
+                                                 threshold = threshold, tail_scale = tail_scale,
+                                                 tail_shape = tail_shape, log = log_int)),
+         numeric(1L))
+}
+
+#' @describeIn normal_lowercase Normal mixture + GPD distribution function (vectorized)
+#' @export
+pnormmixgpd <- function(q, w, mean, sd, threshold, tail_scale, tail_shape,
+                        lower.tail = TRUE, log.p = FALSE) {
+  q <- as.numeric(q)
+  if (length(q) == 0L) return(numeric(0L))
+  lt_int <- as.integer(lower.tail)
+  lp_int <- as.integer(log.p)
+  vapply(q, function(qi) as.numeric(pNormMixGpd(qi, w = w, mean = mean, sd = sd,
+                                                 threshold = threshold, tail_scale = tail_scale,
+                                                 tail_shape = tail_shape,
+                                                 lower.tail = lt_int, log.p = lp_int)),
+         numeric(1L))
+}
+
+#' @describeIn normal_lowercase Normal mixture + GPD quantile function (vectorized)
+#' @export
+qnormmixgpd <- function(p, w, mean, sd, threshold, tail_scale, tail_shape,
+                        lower.tail = TRUE, log.p = FALSE, tol = 1e-10, maxiter = 200) {
+  qNormMixGpd(p, w = w, mean = mean, sd = sd, threshold = threshold,
+              tail_scale = tail_scale, tail_shape = tail_shape,
+              lower.tail = lower.tail, log.p = log.p, tol = tol, maxiter = maxiter)
+}
+
+#' @describeIn normal_lowercase Normal mixture + GPD random generation (vectorized)
+#' @export
+rnormmixgpd <- function(n, w, mean, sd, threshold, tail_scale, tail_shape) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) stop("'n' must be a single integer.", call. = FALSE)
+  if (n <= 0L) return(numeric(0L))
+  vapply(seq_len(n), function(i) as.numeric(rNormMixGpd(1L, w = w, mean = mean, sd = sd,
+                                                         threshold = threshold, tail_scale = tail_scale,
+                                                         tail_shape = tail_shape)),
+         numeric(1L))
+}
+
+# ---- Normal + GPD lowercase wrappers ----
+
+#' @describeIn normal_lowercase Normal + GPD density (vectorized)
+#' @export
+dnormgpd <- function(x, mean, sd, threshold, tail_scale, tail_shape, log = FALSE) {
+  x <- as.numeric(x)
+  if (length(x) == 0L) return(numeric(0L))
+  log_int <- as.integer(log)
+  vapply(x, function(xi) as.numeric(dNormGpd(xi, mean = mean, sd = sd,
+                                              threshold = threshold, tail_scale = tail_scale,
+                                              tail_shape = tail_shape, log = log_int)),
+         numeric(1L))
+}
+
+#' @describeIn normal_lowercase Normal + GPD distribution function (vectorized)
+#' @export
+pnormgpd <- function(q, mean, sd, threshold, tail_scale, tail_shape,
+                     lower.tail = TRUE, log.p = FALSE) {
+  q <- as.numeric(q)
+  if (length(q) == 0L) return(numeric(0L))
+  lt_int <- as.integer(lower.tail)
+  lp_int <- as.integer(log.p)
+  vapply(q, function(qi) as.numeric(pNormGpd(qi, mean = mean, sd = sd,
+                                              threshold = threshold, tail_scale = tail_scale,
+                                              tail_shape = tail_shape,
+                                              lower.tail = lt_int, log.p = lp_int)),
+         numeric(1L))
+}
+
+#' @describeIn normal_lowercase Normal + GPD quantile function (vectorized)
+#' @export
+qnormgpd <- function(p, mean, sd, threshold, tail_scale, tail_shape,
+                     lower.tail = TRUE, log.p = FALSE) {
+  qNormGpd(p, mean = mean, sd = sd, threshold = threshold,
+           tail_scale = tail_scale, tail_shape = tail_shape,
+           lower.tail = lower.tail, log.p = log.p)
+}
+
+#' @describeIn normal_lowercase Normal + GPD random generation (vectorized)
+#' @export
+rnormgpd <- function(n, mean, sd, threshold, tail_scale, tail_shape) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) stop("'n' must be a single integer.", call. = FALSE)
+  if (n <= 0L) return(numeric(0L))
+  vapply(seq_len(n), function(i) as.numeric(rNormGpd(1L, mean = mean, sd = sd,
+                                                      threshold = threshold, tail_scale = tail_scale,
+                                                      tail_shape = tail_shape)),
+         numeric(1L))
+}
+
+

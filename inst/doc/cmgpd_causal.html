@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Causal Inference with CausalMixGPD</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+<style type="text/css">
+
+div.csl-bib-body { }
+div.csl-entry {
+clear: both;
+}
+.hanging div.csl-entry {
+margin-left:2em;
+text-indent:-2em;
+}
+div.csl-left-margin {
+min-width:2em;
+float:left;
+}
+div.csl-right-inline {
+margin-left:2em;
+padding-left:1em;
+}
+div.csl-indent {
+margin-left: 2em;
+}
+</style>
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Causal Inference with CausalMixGPD</h1>
+
+
+
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>In contrast to <code>CausalMix</code>, which was limited to modeling
+the average treatment effect, <code>CausalMixGPD</code> expands on the
+framework of causal inference by fitting treatment-specific outcome
+distributions and obtaining the contrasts by evaluating posterior
+functional of the fitted distribution <span class="citation">(<a href="#ref-Rubin1974">Rubin 1974</a>; <a href="#ref-RosenbaumRubin1983">Rosenbaum and Rubin 1983</a>; <a href="#ref-ImbensRubin2015">Imbens and Rubin 2015</a>)</span>. Thus, it
+is a distribution-based approach where one obtains means, quantiles,
+restricted means, survival summaries, and their contrasts based on
+posterior objects obtained from the modeled outcome distributions.</p>
+<p>The key point made in the software article is that the proposed
+approach becomes especially relevant when the outcome is skewed or
+heavy-tailed. In such settings, treatment heterogeneity might not
+manifest itself via contrasts of means but rather in terms of other
+summaries of interest such as quantiles, and hence the modeling of
+treatment-specific distributions becomes critical for obtaining a
+coherent picture of the heterogeneous treatment effect.</p>
+<p>In this vignette, we describe the process of performing causal
+analysis with <code>CausalMixGPD</code> in four parts. First, we
+introduce potential outcomes framework and discuss the causal estimands
+computed by the package. Next, we explain what happens under the hood
+when the spliced DPM-GPD model is fit to each of the arms. After that,
+we demonstrate the usage of the key functions of the package using the
+example of the provided simulated data set.</p>
+</div>
+<div id="notation-and-short-theory-background" class="section level1">
+<h1>Notation and short theory background</h1>
+<div id="potential-outcomes-and-arm-specific-distributions" class="section level2">
+<h2>Potential outcomes and arm-specific distributions</h2>
+<p>Let <span class="math inline">\(A \in \{0,1\}\)</span> denote a
+binary treatment indicator, with <span class="math inline">\(A =
+1\)</span> for treatment and <span class="math inline">\(A = 0\)</span>
+for control. Let <span class="math inline">\(Y(1)\)</span> and <span class="math inline">\(Y(0)\)</span> be the potential outcomes, and let
+<span class="math inline">\(X\)</span> denote the pre-treatment
+covariates. The observed outcome is</p>
+<p><span class="math display">\[
+Y = A Y(1) + (1-A)Y(0).
+\]</span></p>
+<p>For each treatment arm <span class="math inline">\(a \in
+\{0,1\}\)</span>, define the arm-specific conditional CDF and density
+by</p>
+<p><span class="math display">\[
+F_a(y \mid x) = \Pr\{Y(a) \le y \mid X = x\}, \qquad
+f_a(y \mid x) = \frac{\partial}{\partial y} F_a(y \mid x).
+\]</span></p>
+<p>The package models these arm-specific conditional distributions
+directly. Once they are available, all reported causal estimands are
+computed from them.</p>
+</div>
+<div id="identification-assumptions" class="section level2">
+<h2>Identification assumptions</h2>
+<p>The causal workflow follows the standard potential-outcomes framework
+under consistency, no interference, conditional ignorability, and
+overlap <span class="citation">(<a href="#ref-Rubin1974">Rubin 1974</a>;
+<a href="#ref-RosenbaumRubin1983">Rosenbaum and Rubin 1983</a>; <a href="#ref-ImbensRubin2015">Imbens and Rubin 2015</a>)</span>. Under
+these assumptions,</p>
+<p><span class="math display">\[
+F_a(y \mid x) = \Pr(Y \le y \mid A=a, X=x), \qquad a \in \{0,1\}.
+\]</span></p>
+<p>That identification step matters because it justifies fitting
+arm-specific outcome models to the observed data and then interpreting
+posterior contrasts as causal quantities.</p>
+</div>
+<div id="propensity-score-augmentation" class="section level2">
+<h2>Propensity score augmentation</h2>
+<p>In observational settings, the package can estimate a propensity
+score</p>
+<p><span class="math display">\[
+\rho(x) = \Pr(A=1 \mid X=x)
+\]</span></p>
+<p>and append a summary of it to the outcome model covariates. If <span class="math inline">\(\widehat\rho(x)\)</span> is the estimated score,
+the augmented predictor used by the outcome model is typically of the
+form</p>
+<p><span class="math display">\[
+r(x) = (x^\top, \psi\{\widehat\rho(x)\})^\top,
+\]</span></p>
+<p>where <span class="math inline">\(\psi(\cdot)\)</span> is either the
+identity map on the probability scale or the logit transformation,
+depending on the setting. This is the package’s default strategy for
+incorporating design information into the arm-specific outcome
+regressions.</p>
+</div>
+<div id="spliced-outcome-model-within-each-arm" class="section level2">
+<h2>Spliced outcome model within each arm</h2>
+<p>Within each arm, <code>CausalMixGPD</code> uses the same spliced
+model described in the one-arm workflow. For arm <span class="math inline">\(a\)</span>, the conditional distribution combines
+a DPM bulk and an optional GPD tail:</p>
+<p><span class="math display">\[
+f_a(y \mid x) =
+\begin{cases}
+f_{a,\mathrm{DP}}(y \mid x; \Theta_a), &amp; y \le u_a(x), \\
+\{1-p_{u_a}(x;\Theta_a)\} f_{a,\mathrm{GPD}}(y \mid x; \Phi_a), &amp; y
+&gt; u_a(x),
+\end{cases}
+\]</span></p>
+<p>where <span class="math inline">\(p_{u_a}(x;\Theta_a) =
+F_{a,\mathrm{DP}}(u_a(x) \mid x; \Theta_a)\)</span>. The main modeling
+choice in the causal workflow is therefore not the contrast itself but
+the quality of the two fitted conditional outcome distributions.</p>
+</div>
+<div id="causal-estimands-reported-by-the-package" class="section level2">
+<h2>Causal estimands reported by the package</h2>
+<p>Once the arm-specific distributions are fitted, the package returns
+several causal functionals.</p>
+<p>The conditional mean in arm <span class="math inline">\(a\)</span>
+is</p>
+<p><span class="math display">\[
+\mu_a(x) = E\{Y(a) \mid X=x\},
+\]</span></p>
+<p>and the conditional quantile is</p>
+<p><span class="math display">\[
+Q_a(\tau \mid x) = \inf\{y : F_a(y \mid x) \ge \tau\}.
+\]</span></p>
+<p>From these, the package constructs conditional and standardized
+estimands. The main ones are</p>
+<p><span class="math display">\[
+\mathrm{CATE}(x) = \mu_1(x) - \mu_0(x),
+\]</span></p>
+<p><span class="math display">\[
+\mathrm{CQTE}(\tau \mid x) = Q_1(\tau \mid x) - Q_0(\tau \mid x),
+\]</span></p>
+<p><span class="math display">\[
+\mathrm{ATE} = E\{\mu_1(X) - \mu_0(X)\},
+\]</span></p>
+<p>and</p>
+<p><span class="math display">\[
+\mathrm{QTE}(\tau) = Q^m_1(\tau) - Q^m_0(\tau),
+\]</span></p>
+<p>where the superscript <span class="math inline">\(m\)</span>
+indicates standardization over the empirical covariate distribution in
+the full sample. The package also provides ATT and QTT analogues
+standardized over the treated covariate distribution.</p>
+<p>These definitions explain the structure of the causal API. Functions
+such as <code>ate()</code>, <code>qte()</code>, <code>cate()</code>, and
+<code>cqte()</code> are not fitting new models. They are post-processing
+a fitted causal object to summarize different posterior functionals.</p>
+</div>
+</div>
+<div id="function-map-for-the-causal-workflow" class="section level1">
+<h1>Function map for the causal workflow</h1>
+<p>The most important exported functions in this vignette are:</p>
+<ul>
+<li><code>dpmgpd.causal()</code> for spliced arm-specific outcome
+modeling.</li>
+<li><code>dpmix.causal()</code> for the bulk-only causal analogue.</li>
+<li><code>ate()</code> and <code>att()</code> for mean or
+restricted-mean treatment contrasts.</li>
+<li><code>qte()</code> and <code>qtt()</code> for marginal quantile
+contrasts.</li>
+<li><code>cate()</code> and <code>cqte()</code> for profile-specific
+conditional contrasts.</li>
+<li><code>predict()</code> for arm-wise predictive summaries and
+contrast-based summaries at new covariate profiles.</li>
+<li><code>summary()</code> and <code>plot()</code> for effect-object
+summaries and visualization.</li>
+</ul>
+</div>
+<div id="package-setup" class="section level1">
+<h1>Package setup</h1>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(CausalMixGPD)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a>mcmc_vig <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>  <span class="at">niter =</span> <span class="dv">1200</span>,</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>  <span class="at">nburnin =</span> <span class="dv">300</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>  <span class="at">thin =</span> <span class="dv">2</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a>  <span class="at">nchains =</span> <span class="dv">2</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">2026</span></span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>)</span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a><span class="co"># Settings used when regenerating `inst/extdata/causal_*.csv` (see tools/.Rscripts/build_vignette_fits.R).</span></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a>mcmc_out <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a>  <span class="at">niter =</span> <span class="dv">1200</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a>  <span class="at">nburnin =</span> <span class="dv">300</span>,</span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a>  <span class="at">thin =</span> <span class="dv">2</span>,</span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>  <span class="at">nchains =</span> <span class="dv">2</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">2027</span></span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a>)</span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a>mcmc_ps <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a>  <span class="at">niter =</span> <span class="dv">1000</span>,</span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a>  <span class="at">nburnin =</span> <span class="dv">250</span>,</span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a>  <span class="at">thin =</span> <span class="dv">2</span>,</span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a>  <span class="at">nchains =</span> <span class="dv">2</span>,</span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">2028</span></span>
+<span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="data" class="section level1">
+<h1>Data</h1>
+<p>We use the bundled causal dataset <code>causal_pos500_p3_k2</code>,
+which contains a positive outcome <code>y</code>, a binary treatment
+indicator <code>A</code>, and a predictor matrix <code>X</code>.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;causal_pos500_p3_k2&quot;</span>, <span class="at">package =</span> <span class="st">&quot;CausalMixGPD&quot;</span>)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>causal_dat <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a>  <span class="at">y =</span> causal_pos500_p3_k2<span class="sc">$</span>y,</span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a>  <span class="at">A =</span> causal_pos500_p3_k2<span class="sc">$</span>A,</span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a>  causal_pos500_p3_k2<span class="sc">$</span>X</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a>)</span></code></pre></div>
+<p>A quick empirical comparison between the observed outcome
+distributions by treatment arm gives a sense of the modeling
+problem.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">ggplot</span>(causal_dat, <span class="fu">aes</span>(<span class="at">x =</span> y, <span class="at">colour =</span> <span class="fu">factor</span>(A), <span class="at">fill =</span> <span class="fu">factor</span>(A))) <span class="sc">+</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  <span class="fu">geom_histogram</span>(<span class="fu">aes</span>(<span class="at">y =</span> <span class="fu">after_stat</span>(density)), <span class="at">bins =</span> <span class="dv">25</span>,</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>                 <span class="at">alpha =</span> <span class="fl">0.25</span>, <span class="at">position =</span> <span class="st">&quot;identity&quot;</span>) <span class="sc">+</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>    <span class="at">x =</span> <span class="st">&quot;y&quot;</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>    <span class="at">y =</span> <span class="st">&quot;Density&quot;</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>    <span class="at">colour =</span> <span class="st">&quot;A&quot;</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>    <span class="at">fill =</span> <span class="st">&quot;A&quot;</span>,</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">&quot;Observed outcome distributions by treatment arm&quot;</span></span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  ) <span class="sc">+</span></span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>  <span class="fu">theme_minimal</span>()</span></code></pre></div>
+<p><img role="img" aria-label src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAqAAAAHMCAMAAAA9POpLAAABNVBMVEUAAAAAADoAAGYAOjoAOmYAOpAAZrYAv8Q6AAA6ADo6AGY6OgA6Ojo6OmY6OpA6ZmY6ZpA6ZrY6kLY6kNtNTU1NTW5NTY5NbqtNjshmAABmADpmAGZmOgBmOmZmZmZmkJBmkLZmkNtmtrZmtttmtv9uTU1uTW5uTY5ubqtuq+SOTU2OTW6OTY6OyP+QOgCQZgCQZjqQZmaQkLaQtpCQttuQ27aQ2/+rbk2rbm6rbo6ryKur5P+w4OGyysm2ZgC2kDq2kGa2tpC2ttu225C229u22/+2/9u2//+6iIO+1dS/7/DIjk3I///bkDrbkGbbtmbbtpDb25Db27bb29vb/7bb/9vb///kq27k///r6+vuzsv4dm393dr/tmb/yI7/25D/27b/5Kv//7b//8j//9v//+T////lN4ZhAAAACXBIWXMAAA7DAAAOwwHHb6hkAAAVZElEQVR4nO2d+2Pb1n1HaSeWtXRrk1mJoy1r10VtYifWsrWLt9pxly2p59lc2q2RH4rM6GH8/3/CcPEmAfCDxyW+V9Q5PyQ0SBxcAMcAAVLyLAIImJn1AADWQaAQNAQKQUOgEDQECkFDoBA0BApBQ6AQNIMCvfj3n8xmb/39UfzwbH9n8LIvDtfNu/i7xyO8F4c3jppcbnrjmN1Llmdqo3WVxYg7rtDw9d5KhgT640ezhLe/3WSg8+v+Ai1drYG6l4wMVIy44woNX++tZECgF4ezd+M0f/xiFu/OUANd52oNtBsEOiUDAp3PbpUP4r11spscS6OLL2azax+7J9wh9q++TUqZz65/kWzxZLfmT0TRd/FM35QhuSfe/jbKjmHxfPHfgplbjnvdl9VXLHZvfbd77ZdRvNR3j6KqMqp6E1E2otSVDuab9AiajXllcekfK2P5+iezeFHVVUvXJJv9ZHaQ/DnZHtWlfFtd0/jtUCxJn24bfbGsfL2jyqzZdvx6Zd6rQf9ALw7zv+Jn+25nv7Ubb9JrX6abduZ22cJNSSfFT974067bjW5nFk/Ebbu3CB/tZM6Tco7lQE/yGYpXLHZ/Fj+89hv3553KslIKrxPlI8rTcYP5/nB5zPVAK2OZZWtUrlq62vns6bH0JF16dSlHK2taDKJt9MWyqoHOy+Wn23Fp3itC/0ArZ7hH1x+f7c/++uji9/EWW+y+dxT/x7XhDjZ/TB65bZ2ecePXlk+c7V/7bfTjYb6d49d97PaHayorJn9TGO+872JJ+Yp4n34cT4qnLXbd63NlNrbc60TFiDJXOhgXaD7m2uKSqouxzHaO4keVVcsWks/uVir+T/7GtbqUchNcTw772RLaRl8uqzzFl7Om0uV5e++3S8r4QNNdfP3xYvetX3zjpsanMfe/uSsy2djz7GBTPpE+KnZ59uDRtS9XisnmqL4ieZQsNW0wV0blotN96p7MRpSl416UBpqPuSHQ6ljcDOnAc1G6AfLZk9NCdoZfWsrSsP7v63/azctrG325rKX3oNmsubQ6b+/9dkkZH2i6jeMGH7nzUXz5dJKemWZ5bsnucruyfCJ981ZczCySNwHuXFkL9GD1FclOTccQH7pKZfKy0puI8hFVLtHTQPMxNwbaMJZClG6AYpXdOE7K9xfFUirDSs/iZaDNo18ZSL7S2azps8vz9t5vl5Tx70GLvRX90d1+uv64Fqj736PkeDNxoPmIRgdaiNLVLlc5Xq0ylqZA4/cDP/vn//jz/k7/QMtZCbQXq1fxUSXa//3H2UFRVXEqml/7F/ey8on03FYci8vTavqu7mxpfy6/Ynk3lcoVb3EWdCOqBVqMeXlxq6f4MtBcFBXDTlf5ZPYPxRm+spTqmh5ES+9Bm0ffFGg5K4H2YuU+qLuEcVcMJ/GlQ/zI7dj4SiW+VMnf4rlN+3O3c8sn4ouZ5O7PTmHMLkzik+kvsyfmycWtO0nuVy9dlndTqUxEpdctuhhR5ioDzcdcW9zyRVIeTSlKF1LMHj/7l3+Rn+GXlpIPK+7ryN1MiqfOkxN+8+irgeZvGcpZCbQfZ0ufJLl7H7P0+tXhbtSkT98qDmPxU0lBxRPpo4bbTJUn5sVtJhd35TbT0m4qlakon71ym8m1UdzkTAPNx7yyuNXbTHk0pShZ/XJ2N1t5TVMupboJZtVBtI2+Gmi+NuWsBNqTpc/ib8V79KfFjfr3kquiuOC3Pi5P8en9k8oTyZu6t/9Q3qhfZDfHo+h/dmfvfu+eiP8axEeQ73azO+SL8kb90m4qlVHVW96odyNyru+r70HzMS8vLn3JYvVDg+qqLa9y5U5EVFVUhpXc9v+teyvhnv5Ty+gry0rXO6rOSqAwlJPZgX4RDIdAR/HjR1fnWGYDgY4gvlwq3v3CZiDQEcSXMe9Zj2HbIVAIGgKFoCFQCBoChaAhUAgaAoWg8R/oSyxY/EGgWGwtAgLFYmsRECgWW4uAQLHYWgQEisXWIiBQLLYWAYFisbUICBSLrUVAoFhsLQICxWJrERAoFluLgECx2FoEBIrF1iIgUCy2FgGBYrG1CAgUi61FQKBYbC2CDQd63ERvi5+xYAnSIth0oD/UIVAs3SFQLLYWAYFisbUICBSLrUVAoFhsLYI1gZ7f3bv9Inn0em/vg2ddjQSKxSPtgb65fy96/qF7dPrJs+xRFwgUi0faAz3//FmSZkr5SEGgWDzSHujppy+i888eZH8qj6Av+3D8qs5xLwNcRqYI9PXtMtDTX73/oPWFK3AExeKRrkfQ8pGCQLF4pOt70OjpvY5GAsXikXVX8Xeyd57Vk72GQLF4RN4HTe4x7e3xHhTLZiwCPknCYmsRWATa5TuiIW1CLJu0CCwC7XJUDWkTYtmkRUCgWGwtAgLFYmsRECgWW4uAQLHYWgQEisXWIiBQLLYWAYFisbUICBSLrUVAoFhsLQICxWJrERAoFluLgECx2FoEBIrF1iIgUCy2FgGBYrG1CAgUi61FQKBYbC0CAsViaxEQKBZbi4BAsdhaBASKxdYiIFAsthYBgWKxtQgIFIutRUCgWGwtAgLFYmsRECgWW4uAQLHYWgQEisXWIiBQLLYWAYFisbUICBSLrUVAoFhsLQICxWJrERAoFluLgECx2FoEBIrF1iIgUCy2FgGBYrG1CAgUi61FQKBYbC0CAsViaxEQKBZbi4BAsdhaBASKxdYiIFAsthYBgWKxtQgIFIutRdA/0Jd9OH5Vp3FaLyuEjmWgCo6gWDxCoFhsLQICxWJrERAoFluLgECx2FoEBIrF1iIgUCy2FgGBYrG1CAgUi61FQKBYbC0CAsViaxEQKBZbi4BAsdhaBASKxdYiIFAsthYBgWKxtQgIFIutRUCgWGwtAgLFYmsRECgWW4uAQLHYWgQEisXWIiBQLLYWAYFisbUICBSLrUVAoFhsLQICxWJrERAoFluLgECx2FoEBIrF1iIgUCy2FgGBYrG1CAgUi61FQKBYbC0CAsViaxEQKBZbi4BAsdhaBASKxdYiIFAsthYBgWKxtQgIFIutRUCgWGwtAgLFYmsRECgWW4uAQLHYWgQEisXWIiBQLLYWAYFisbUICBSLrUVAoFhsLQICxWJrERAoFluLYE2g53f3br9IHp3+am/vXlcjgWLxSHugb+7fi55/6B6df/YgOv31g45GAsXikfZAzz9/Fp1+8ix+9Npl+rTrIZRAsXikPdDTT18kx86U8tHLPhy/qnOziV5WCJ0pAn19uxLom/t3uhrlEfTmkzo311oGgyV8i6DbEfT8buc+CRSLT7q8B42v4jtfwxMoFq+su4q/k13F9+qTQLH4RN4HjQ+iz/cc3q7iCRRLdww+SSJQLN0hUCy2FgGBYrG1CAgUi61FQKBYbC0CAsViaxEQKBZbi4BAsdhaBASKxdYiIFAsthYBgWKxtQgIFIutRUCgWGwtAgLFYmsRECgWW4uAQLFMaZnPbvWbgUCxTGi5OPz59ce95iBQLBNaFu/85+5BrzkIFMuElkc3vj/c6TUHgWKZznK2fyua9zvHEyiW6Swn176MFv3O8aEEetyA57FgMbc82nHXSTt9ZqkGerYfBz6aYYGuvuhVwy8UGzkWLNaWs/2Zo9c5fvkI+mg2u3HUd7ErECiWFk6SNPud41dP8S7ynrdSVyBQLM1kJ/d+5/j6e9CLw54H4RUIFEsz+aFz3ued5Gqg89lsx92uGn6iJ1AsHlkK1B08k8hPRhxCCRSLR5av4sec2nMIFItHlgMdffiMCBSLV0IJtIkxo2gYC5YgLYIy0PksZ2eUcVigqxO+avj4c+RYsARpETQcQUdCoFg8Espn8QR6VS2CItD48Jl9VDrqNj2BYvEKR1Ask1mavrKmvrVGoFgmszTVoG4nLgWanuZH3q33F+j474he6t25fZbRgT7acV/In+/0XfAS/gLtvTLrx+JnjbAMt4wNND6Auq9CmdyoJ9ArYPEQqPupJgLFshnL2EAvDm+5n2pyPzgyAgLF0sLo96CL3dnOqO+COggUSwsi0PgCvd5eyLeZCHTLLOsDvTg8iOoX6ASKZTLL+kDP/vZxtHhn9fpn9RQf0ked47+Cd6l35/ZZ1ge6+OlRdPY3qz+utHyRtDN0rBX8Bdr0uhFj8bNGWIZb1gd6ckMFGtrX7Qh0yyzjj6AEimWDltHvQUfeok8hUCwtqKv4W+Iqvtv3QV/24fhVnZtf1ek8rdfSwYohgZrcB228EucIekUtoz9J8sJyoF1iJNArYhkf6Hw2O5j7/KiTQLGUjP8+6I0/p9+4GwOBYmnBy9ftDrx+3Y5AsZQQ6Nqx+FkjLMMto39obu5O8e47y2MgUCweWb5IOnG3Qcf1SaBY2mi86Si+AMRtJiyTWW7+dxME6nWNsAy3jA00OcHPxn5hhECxtDAu0IvD5Or9bJ8b9Vg2YxkXaP4JkvtSyRgIFEsLowItvww68rNOAsXSwqhAy6/Tc6Mey2YsMtD695UJFMt0FhXoScNXkQkUy2QWEeija7/hCDp6jbAMt4w8xRf/ygeBYtmIZVSg3iBQLC0Q6Nqx+FkjLMMtBLp2LH7WCMtwC4GuHYufNcIy3EKga8fiZ42wDLfwdbu1Y/GzRliGWwh07Vj8rBGW4RYCXTsWP2uEZbiFQNeOxc8aYRluIdC1Y/GzRliGW/ihubVj8bNGWDxbBJct0H5/A0PaEVgGcdkC7fceJqQdgWUQBNpzjbB4tggItOcaYfFsERBozzXC4tki2IZA2y+cQtoRWAaxDYG2H1VD2hFYBkGgPdcIi2eLgEB7rhEWzxYBgfZcIyyeLQIC7blGWDxbBATac42weLYICLTnGmHxbBEQaM81wuLZIiDQnmuExbNFQKA91wiLZ4uAQHuuERbPFgGB9lwjLJ4tAgLtuUZYPFsEBNpzjbB4tggItOcaYfFsERBozzXC4tkiINCea4TFs0WwJtDzu3u3X2SPTz951tVIoFg80h7om/v3oucfpo9f731AoFg2YhG0B3r++bP8wPn0/d9xBMWyGYugPdDTT19E5589yP5QBvqyDze/qjNq2sM6jdN6jRJ8M0Wgr283B6rgCIrFI/2PoAoCxeKRTu9BCRTLxiyCdVfxd4qreALFsimLQN4HTdPsEuhxA94D/a86BHqpLQKPnyQd/5Dw6ocK3gNtmkagl9kiIFANlk1aBASqwbJJi4BANVg2aRFcoUD7/wsTUYNlMFgGcZUCbX/dekLandtnERCoJqTduX0WAYFqQtqd22cREKgmpN25fRYBgWpC2p3bZxEQqCak3bl9FgGBakLandtnERCoJqTduX0WAYFqQtqd22cRbGugTRBoiBbBNgTa/h3Rh0sxEmiIFsE2BNo0jUAvi0VAoJqQduf2WQQEqglpd26fRXDVA+3yDbyQduf2WQRXPdAuB9WQduf2WQQESqC2FgGBEqitRUCgBGprERAogdpaBARKoLYWAYESqK1FQKAEamsRECiB2loEBEqgthYBgRKorUVAoARqaxEQKIHaWgQESqC2FgGBEqitRUCgBGprERAogdpaBARKoLYWAYESqK1FQKAEamsREGiXQAf/evsliw+2zyIg0E6BNs3ac/OEFEVIFgGBEqitRUCgBGprERAogdpaBARKoLYWAYESqK1FQKAEamsRECiB2loE2xpo+29dJtCwLIL+gb5s4/hVnZtf1TGb9rBOw7SbDavWOGvrhgCP6W7rEbSwVKZxBA3RIiBQArW1CAiUQG0tAgIlUFuLwGOgjd9Ju4SB+vw3wCqEFEVIFoHPQJuiuISB1qY8HP4PhFQIKYqQLAICJVBbi4BACdTWIiBQArW1CAiUQG0tAgIlUFuLgEAJ1NYiIFACtbUICJRAbS2CqxRo03dEu3xtlEA3aRFcpUC7zUug01oEBFqbRKCTWgQEWptEoJNaBARam0Sgk1oEBFqbRKCTWgQEWptEoJNaBARam0Sgk1oEBFqb1BRo0y3UnpsnpChCsggItDapKdCmWXtunpCiCMkiINDaJAKd1CIg0NokAp3UIiDQ2iQCndQiINDaJAKd1CIg0NokAp3UIiDQ2iQCndQiINDaJAKd1CIg0NokAp3UIiDQ2iQCndQiINDaJAKd1CIg0NokAp3UIiDQ2qSugXYl2zzV3dl33pKQ0iLQgfM+mSbQ2uta/qWbbPMsBdpz3pKQ0iLQgfM+IVBBSBYBgdYmEeikFgGB1iaNCXTNF5sJdBAEWps0JtCm12Wbh0AHQaC1SQQ6qUVAoLVJBDqpRUCgtUkEOqlFQKC1SQQ6qUVAoLVJvgPt+g+DEWgTBFqb5DvQwiJiJNAmCLQ2qeleZtOsXQNt8jXN2+mXQ4SUFoEOnPfJuEBrU75qnrVroIVlwLy1jRxSWgQ6cN4nBCoIySIgUD3JMNBOX8Hrz5C0NjUWAYHqSYaB1l71sPdv1WtiUKAbGouAQPUkAk12b3CBnt/du/1i5dE6CJRA/dMe6Jv796LnHy4/WguBEqh/2gM9//xZdPrJs6VHayFQAvVPe6Cnn76Izj97sPTI8bKNzj8JBltDWwtTBPr6dp5l+agLId1jwxK+RdD/CKoIaeWxhG8ReHwPmhHSymMJ3yJYdxV/p7iKv9PlKj4jpJXHEr5FIO+DukNnt/ugGSGtPJbwLQKPnyRlhLTyWMK3CAgUi61FQKBYbC0CAsViaxEQKBZbi4BAsdhaBASKxdYiIFAsthYBgWKxtQgIFIutRUCgWGwtAv+BAniEQCFoCBSChkAhaAgUgoZAIWgIFIKGQCFoCBSCxnOgvX68bsM839vb+6DrD0tvluSHtgPZNslYAto2Ar+Bdvw1Y9Pw9J71CHJeuxgC2TbJWALaNgq/gfb7FQ+b5c2/dv1dKJvm6fu/cz+7HcS2SccSzraR+A203y/J2SzxGXVvL5ADhQszlG2T/aKDYLaNwG+g/X7N2GY5/fWDYI4ULopQtk3ylyWgbSPY3iNoQiDvtUI7giYEsm0E2/seNCGQnXAazHvQKx5ov18ztlncKfXNv9kH4XBRhLJt8rcboWwbwXbfB33f/oyaEOJ90FC2jYBPkiBoCBSChkAhaAgUgoZAIWgIFIKGQCFoCBSChkAhaAh0HI924v/Md4xHscUQ6DhOrj+OLg4PrIexvRDoOM72D6LFO4+th7G9EOhI4tM7Z/gNQqAjWbzzB87wG4RAR3Jx+AvO8BuEQMcyn+1YD2GbIdCxLHY5w28QAh0L1/AbhUDHMr9lPYKthkDHsdi9cWQ9hq2GQCFoCBSChkAhaAgUgoZAIWgIFIKGQCFo/h9hHv2lreXE8QAAAABJRU5ErkJggg==" alt width="85%" style="display: block; margin: auto;" /></p>
+<p>Even in a simulated benchmark, the treated and control distributions
+can differ in ways that are not well summarized by a single average
+shift. That is exactly where the distributional causal framework is
+useful.</p>
+</div>
+<div id="fitting-a-causal-spliced-model" class="section level1">
+<h1>Fitting a causal spliced model</h1>
+<p>The high-level causal wrapper is <code>dpmgpd.causal()</code>. It
+fits treatment-specific outcome models and, when requested, a propensity
+score stage. The software article presents this as the direct causal
+extension of the one-arm workflow.</p>
+<p>To keep vignette building stable, the numerical outputs shown below
+are read from small precomputed files shipped in
+<code>inst/extdata/</code>. The following chunk shows the package call
+you would use for a full fit; the tables and figures in this section are
+rendered from those shipped artifacts in hidden companion chunks.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a>fit_causal <span class="ot">&lt;-</span> <span class="fu">dpmgpd.causal</span>(</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>  <span class="at">formula =</span> y <span class="sc">~</span> x1 <span class="sc">+</span> x2 <span class="sc">+</span> x3,</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a>  <span class="at">data =</span> causal_dat,</span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>  <span class="at">treat =</span> <span class="st">&quot;A&quot;</span>,</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a>  <span class="at">backend =</span> <span class="st">&quot;crp&quot;</span>,</span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>  <span class="at">kernel =</span> <span class="st">&quot;gamma&quot;</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>  <span class="at">components =</span> <span class="dv">6</span>,</span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a>  <span class="at">PS =</span> <span class="st">&quot;logit&quot;</span>,</span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a>  <span class="at">ps_scale =</span> <span class="st">&quot;logit&quot;</span>,</span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>  <span class="at">ps_summary =</span> <span class="st">&quot;mean&quot;</span>,</span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a>  <span class="at">mcmc_outcome =</span> mcmc_out,</span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a>  <span class="at">mcmc_ps =</span> mcmc_ps,</span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a>  <span class="at">parallel_arms =</span> <span class="cn">FALSE</span></span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a>)</span></code></pre></div>
+<p>The call matches the structure used to build the shipped causal
+summaries: arm-specific spliced outcome distributions, a gamma bulk
+kernel, a CRP backend for the mixture, and a logistic propensity score
+stage summarized on the logit scale.</p>
+</div>
+<div id="standardized-causal-summaries" class="section level1">
+<h1>Standardized causal summaries</h1>
+<div id="average-treatment-effect" class="section level2">
+<h2>Average treatment effect</h2>
+<p>The standardized ATE contrasts the arm-specific means after averaging
+over the empirical covariate distribution.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>ate_fit <span class="ot">&lt;-</span> <span class="fu">ate</span>(fit_causal, <span class="at">interval =</span> <span class="st">&quot;hpd&quot;</span>, <span class="at">level =</span> <span class="fl">0.95</span>, <span class="at">show_progress =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">summary</span>(ate_fit)<span class="sc">$</span>effect_table, <span class="at">format =</span> <span class="st">&quot;html&quot;</span>, <span class="at">digits =</span> <span class="dv">4</span>)</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th style="text-align:left;">
+estimand
+</th>
+<th style="text-align:right;">
+estimate
+</th>
+<th style="text-align:right;">
+lower
+</th>
+<th style="text-align:right;">
+upper
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+ATE
+</td>
+<td style="text-align:right;">
+-240.3653
+</td>
+<td style="text-align:right;">
+-222.5154
+</td>
+<td style="text-align:right;">
+0.1209
+</td>
+</tr>
+</tbody>
+</table>
+<p>This table is intentionally simple. In the package,
+<code>ate()</code> returns an effect object with summary and plotting
+methods. The key interpretation point is that the reported effect is
+built from the arm-specific fitted distributions, not from a stand-alone
+regression coefficient.</p>
+</div>
+<div id="quantile-treatment-effects" class="section level2">
+<h2>Quantile treatment effects</h2>
+<p>Quantile treatment effects are often more informative than a single
+average contrast in skewed or heavy-tailed settings.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>qte_fit <span class="ot">&lt;-</span> <span class="fu">qte</span>(</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  fit_causal,</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="at">probs =</span> <span class="fu">c</span>(<span class="fl">0.25</span>, <span class="fl">0.50</span>, <span class="fl">0.75</span>, <span class="fl">0.90</span>, <span class="fl">0.95</span>),</span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="at">interval =</span> <span class="st">&quot;credible&quot;</span>,</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  <span class="at">level =</span> <span class="fl">0.95</span>,</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>  <span class="at">show_progress =</span> <span class="cn">FALSE</span></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>)</span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">summary</span>(qte_fit)<span class="sc">$</span>effect_table, <span class="at">format =</span> <span class="st">&quot;html&quot;</span>, <span class="at">digits =</span> <span class="dv">4</span>)</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th style="text-align:right;">
+prob
+</th>
+<th style="text-align:right;">
+estimate
+</th>
+<th style="text-align:right;">
+lower
+</th>
+<th style="text-align:right;">
+upper
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right;">
+0.50
+</td>
+<td style="text-align:right;">
+-0.0447
+</td>
+<td style="text-align:right;">
+-1.0870
+</td>
+<td style="text-align:right;">
+1.4699
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.90
+</td>
+<td style="text-align:right;">
+0.0476
+</td>
+<td style="text-align:right;">
+-3.0921
+</td>
+<td style="text-align:right;">
+3.6900
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+0.95
+</td>
+<td style="text-align:right;">
+0.2909
+</td>
+<td style="text-align:right;">
+-3.8436
+</td>
+<td style="text-align:right;">
+4.8933
+</td>
+</tr>
+</tbody>
+</table>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a>qte_fit <span class="ot">&lt;-</span> <span class="fu">qte</span>(</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>  fit_causal,</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>  <span class="at">probs =</span> <span class="fu">c</span>(<span class="fl">0.25</span>, <span class="fl">0.50</span>, <span class="fl">0.75</span>, <span class="fl">0.90</span>, <span class="fl">0.95</span>),</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="at">interval =</span> <span class="st">&quot;credible&quot;</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  <span class="at">level =</span> <span class="fl">0.95</span>,</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>  <span class="at">show_progress =</span> <span class="cn">FALSE</span></span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>)</span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a><span class="fu">plot</span>(qte_fit, <span class="at">type =</span> <span class="st">&quot;effect&quot;</span>)</span></code></pre></div>
+<p><img role="img" aria-label src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAqAAAAHgCAMAAABNUi8GAAAAxlBMVEUAAAAAADoAAGYAOjoAOmYAOpAAZpAAZrY6AAA6ADo6AGY6OgA6Ojo6OmY6OpA6ZpA6ZrY6kLY6kNtmAABmADpmOgBmOjpmZjpmZmZmkGZmkLZmkNtmtrZmtttmtv9/f3+QOgCQZjqQkDqQkLaQtpCQttuQ29uQ2/+2ZgC2Zjq2ZpC2kGa225C227a229u22/+2/7a2/9u2///bkDrbkGbbtmbbtpDb25Db27bb29vb/7bb////tmb/25D/27b//7b//9v////bklWAAAAACXBIWXMAAA7DAAAOwwHHb6hkAAAQ20lEQVR4nO3dC3va1gGHceGF4Tbt2kGza8vcbR3KtjaZtWTdwAG+/5eadI4uR0LCWOjy1+H9PU8SA0IHwmvdsEVwBIQFYz8A4BwChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTRvAz18/E0QBF98t734Dn9/PB4egvnW/FV/+yXzeMFDrJv68PY+CL62f3cyysT5Guj+TWC9enfZHT69uTsbqLn9knlcrH7qXfKgl/bvLkaZOk8DjSPLXPhqhvmE9YGGF8zokmmemzoKZpvs7y5GmTpPA42CYJas3T/emwWRfU33K7NQ+pgsXL/cmKlmf3sbL2Q3yRRJy/9ylqCH+JbZ11mp9vbH+B5/fRPcvXNvzednp3m/ChYfX8fDH/99b2btzupkxOybIpvCXDt7bf7elB7Dh/jKX3xXuV9+bekppo/yjZ0sXhqvq09nOvwMNG4sXQLFr1hcm/vq7eyC1S6n8q9PAo0nNlsIaQl5oIn51rl1V5nH+1U619dZSc7EJyM+Zo8ynaIUqPsYQnvHZTnQ/NpKoOZRfjBlxrecPp3p8DPQ+OVYpF+GNob81Yvz++X2+HSfvpDxJmpUvMDONmiYLCftZOl87mxg83fH/zq3uvMz0yQpLI9xHMF3xazfNY2Yz7yYoljFO1fH3wa/3n5aJXdx7ndybR5o8ijjh7bIrqo+ncnwM1DnlYgqgSZ+/ke8iFqYF3JtJl6cBJpOGznLqjTQZKFUuTWbXxaoXWLN027diU9GNMpT5IG6V6fDf/VTNezytXmg62NphidPZzJuL9DD93a1uMiWU3ZxWwk0nkOxKZDIAjWX3Vud+WWBLrKZmsfhTnwyYvZwK1OYv52r3R23+t25yjboJp3v2k5z8nQmw89A01V89HVSW778yVbJwau//Lx6JtB0y7IhUOdWd371gbqzqg/0dArzd3mUbJulHGjlWnczwd6ebyEQqBC7kxR3MPttUOwkZcuzZZbI+SXoujTL6hI0u9WdX+MSNJ9V4xK0MkW2BM2uvnQJWg40WaX/2Xx98nQmw89A7WGm46c36S6ufcV2gV2ercsvZG2gzm6WVQrUudWdX32g7qzqAz2dIttwrCwgd1/+ULMNaq51nmIRqFmzJw2fPJ3J8DTQfXasx74+Zrf500Ngl2fzbfJlZQlqvi7txSeFr/JFVPkAenHryfxOAnVndTKidTJFthefXx2XZ7ZX4u8G536la/On6EyRHIZaV0aYFk8DTReeZqvrD84+wrJ4j6kSaLKVVnMc1G3BHqg3VxS3uvMz07w/CdSZ1cmIpeOgxRT5dPljCMujlI+DLo7uU3QC3WWTVp/OZPgaaPbDIr+3byU9xb1+9WO+F//qB+eQjs0leafl1U/OO0mfvo/v+lX+Tr65/V3+0he3OvMz0/x4Eqgz8cmI6fyrU6TjuI/BvGf0x2P5fsW17lMsAi1W7ZWnMxneBpo5vP3V1NZqcHgfKKaNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGNQCGt40AD4CJjBdrt7OArAoU0AoU0AoU0AoU0AoU0AoU0AoU0AoU0AoU0AoWMuigIFDIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIIFNIGD/Tpft3l7OC5wQLdr4oPabh7vHp2uBHDLUF3wTL5hyUoXmLAVfx+Nd/WBfryj7/B7Rh0GzScbViC4kWG3UmKgiWB4iUG3ot/ug8CAsXlhj7MdHggULwAB+ohjUAhjUAhjUAhjUAhjUAxhNavLYFiCAQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaWMGul+tsyt2d49tH8hLxsXkjB7o4WF5JFA0mUKgURAEZlkbNUxFoP6aQKDRbBNPujgS6C3SD9ROcHiYbwn0BukHmu1KhfNtJdAgd+m4mBz9QO0EsXDBEvT26Aear9j3q4BAb864gRYr6fN78XYlf3gg0JvDO0mQRqCQNvo2aBcI1F8ECmkECmkECmlTOMzU6rHADyxBIY1AIY1AIY1AIY13kiBt5EAPD8ku/GyT/0xdZ48Ffhg30ChY2n84zIR6owa6m23sF1GwaPs4GselWi+MGejhIc1yvwrm27YPpGlcAvWCxF58NP/Q/SqeQL0gEWgvJ24gUC9IrOKTX4hr+zgaxyVQL2jsJD19tmn7OBrHJVAviBxmuu4tJQL1l8SB+qt24ZvGJVAv+PtWJ4F6gUAhjUAhjUAhjUAhjUAhzd/f6iRQL4y9BN2ZQ/X5W0rdPRYC9cPoB+rtm/ARP26HWiMHmv1AEz/NhHqjL0Ht7yKFLEFRa/xt0GQRGrENinpjB2p35a/8aREC9dfogXaBQP1FoJA2eqDmNzrDa07bQKA+GzvQ3WwTzbf71VWFEqi/BA4zRWc+hbP9YyFQPwgcqE8C5UA96oksQTlQj3oa26BX/longfpr7EDtgfrr3kgiUI+NHmgXCNRfY+8kfWOXnewkoZ5IoBxmQr1RAw2LX/ngQD1qiSxBr0Og/mr7MsYLvStmxk4SLtTyZTSr5fYzKybMfrOTbVDUavcyphuOrWdWTBjOt9Hi+HTPgXrUGjnQ5MeYdskPi/BWJ2qNHuj6+PT5o/nTHoH66yUvo9NkV9ugyQ+LJHvyBIp6l7yMQc0Cs6u9+OQIfbhkFY8G517GujDP3rHNYaZwkezJX7UTT6D+qs/vXJj5NBded/Gdr0Cgvqp0eHaRWb3rhdddfOdm9pMWzhwrJVBPuT1eGmZ+3wuve+bOFxyoj7I36ndN79g3rAUufTToTNCV0uzaPZQLrzt/58PDs3tHzkfJN+1K1e2vtX5iE9JZDp3p5wm2u++F152/s/NxnU2aP9Ez/2/5UyK+ovRv0/Xt/w1K81X5t7vnp/lv3Ge7+9Vd/1xseVrZF87isUmrJaj7rae6eMAF2v+3d7QNesGndOa/UfeCbVCS8sXYv5P0dG9TOncgNNuRatxcvdVt0FswcqDOJ3Jfgb14f439E/XP7yS1fCwcB/XD6EvQ685rd2ZcAvXC6Nugz+8ktXssBOqH0VfxwfM7Sa0eC4H6YewlaCcI1F8ECmkECmljBrpfLdkGxXksQSFt7L14zm6Hs0QC5ex2qDdqoJzdDs8RWYJeh0D9xU4SpI0daHJypujajzsmUH+NHWg43z7dL5LTN1yBQP019jboan3cBWsOM6GBQKBhHCeHmVBv9FX8Yr9KPu2YVTxqjR3ofhXMNtf+ZhKB+mvsQDtBoP4iUEgb98ftmk5q08FjIVA/jB6o/b1OAkU9AoU0AoU0AoU0AoU0AoU0AoW0cQMtfuWDQFHL33eS4AUChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChTQChbQpBBoFQWBO1Nh0JnsC9dcEAo1mm6M9iT2B3h79QO2pRw4P8y2B3iD9QLPzMIfzLYHeHv1A7RL0mHxiDYHeHv1A8xX7ftV0BicC9dcEAo334u1K/vBQDrQ49diLZocpmUKgQ88OQiYTaL4p2s3sMBEECmkECmkECmkECmmTCXTA2UEIgUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagUIagcJPBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppgwf6dL/ucnbw3GCB7ldB7u7x6tnhRgy3BN0Fy+QflqC4Vk+r+P1qviVQXK+3bdBwtiFQXK2/naQoWBIortXjXvzTfRBUAy12nl48O9ykPg8zHR5OAr1mdrhF/Qa67HJ2uEUECmkECmkECmkECmmj/TQTcJGRAh1tjHEHZMRJj0qgjCg9KoEyovSoBMqI0qMSKCNKj0qgjCg9KoEyovSoBMqI0qMSKCNObFTgQgQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaQQKaT0GuguC2Sb92p49fNHfYNUBzUn4eh6vNOIu/XXaxvOqdT5icirM3sc7HbG4MIj+At3Fz2SXPZunz/p/WqUBd/Nt/F3R93eEO2Ji2BGj5ELv3xHuiM+cvrgPvQVqzz8Spi/YruFDF/oa0F6I+h21/BSP/Q9YfY6LyvB9j7hfmf/V5DTwg+ktUPuNlr1iUe9r2/KAQyyxK0/RXNF8UqDuRxwk0NKIdkm6G3Ql31+gJpFsyRl+EW8u9fvqlQbc3b1f9T1g5SnGwr7XE+URh1jFl/9XbaD9b/c6egu09N1mPx0k7DWY0oBR8kFOdhEz0IjHbA044Ii7/ndZSiOmi1MPA02v6nUBUw50Vlm49T7icYh1X3nEZIHd91ZFZUSzk+RHoCfrv7Ofr9T1gHajqecdzupTDHvfeyiNeLIJ3PuI8VMMgrv33/ixDXr639fvnkt5c94G2u+uUuUp9r+GH2GXpe5l/Lz3IzKOYQ4z2afZ7xq3ckCk/wGrh5kGOEA4+H9qzaE0Xw4zVY7wmiMi/W8uFQex4//Fc6eC7n7EQQ6/lP9TB9gGLY1o3ocY9ihTn291pm+LpYfrBnhXrjTgrvfjWtUR+z5KfzpiOPRzTN6x9uatTqADBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBAppBNpScu6nZ05TtFubs+zZM+0Vqpcvve02EWgrh4fkTGHnTy2XxUag1yDQViL3JMcNCLQLBNpGfjLlcGGbMn+lp5jcr75dxV8kH3U3/1+2io+KMyU6l9Nz0MabCuntBFpFoG3k5xbf3T3mgSYn6U0+vGG/SoKbbbLtz+RPZD59wBbqXE5P8znfZrcTaBWBtlF8EIztMAlrn3y2QLJINIvX+AsnULvETc/W7V5ONhXiC/llAq0i0DbqAjUXk3V8XmwRqJ0+3WJ1Lye3xxdKl+Ei0DZqV/HxZuTdP+/rA3U/Crl0Od4uiNfw+WUCrSLQNoqdpPk269EsH58aAi1/JLJzOfnMxnWxRCbQKgJtJTKftDj/j9mvsZucZgtzV7+KL3VXurxf/c5shq7z2wZ/LtoItJ3QFBqYD7uZb+Ov1nbhGSydQJelvXjzQYLHY+VyGJhPCEkvE2gVgbaUbjaaxV8QfGu3QWeb0NlrCivHQdOPqSlfTj87OMrmRaBlBHqdt8N+atDtIVBII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BII1BI+z9vjUJD9L/oegAAAABJRU5ErkJggg==" alt width="85%" style="display: block; margin: auto;" /></p>
+<p>The QTE display shows how the treatment effect varies with the
+quantile level. This is one of the main scientific motivations for
+fitting treatment-specific distributions directly rather than relying on
+mean-only summaries.</p>
+</div>
+</div>
+<div id="conditional-causal-summaries-at-representative-profiles" class="section level1">
+<h1>Conditional causal summaries at representative profiles</h1>
+<p>The conditional functions <code>cate()</code> and <code>cqte()</code>
+evaluate treatment contrasts at user-supplied covariate profiles. A
+common strategy is to build representative profiles from empirical
+quartiles of the predictors.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>qs <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="fl">0.25</span>, <span class="fl">0.50</span>, <span class="fl">0.75</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>Xgrid <span class="ot">&lt;-</span> <span class="fu">expand.grid</span>(<span class="fu">lapply</span>(causal_dat[, <span class="fu">c</span>(<span class="st">&quot;x1&quot;</span>, <span class="st">&quot;x2&quot;</span>, <span class="st">&quot;x3&quot;</span>)], quantile, <span class="at">probs =</span> qs))</span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a><span class="fu">head</span>(Xgrid)</span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a><span class="co">#&gt;            x1          x2         x3</span></span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a><span class="co">#&gt; 1 -0.66114531 -0.54573642 -0.6595519</span></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a><span class="co">#&gt; 2  0.07649836 -0.54573642 -0.6595519</span></span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a><span class="co">#&gt; 3  0.66247098 -0.54573642 -0.6595519</span></span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a><span class="co">#&gt; 4 -0.66114531 -0.09628321 -0.6595519</span></span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a><span class="co">#&gt; 5  0.07649836 -0.09628321 -0.6595519</span></span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a><span class="co">#&gt; 6  0.66247098 -0.09628321 -0.6595519</span></span></code></pre></div>
+<p>To illustrate the profile-specific summaries in a lightweight
+vignette, we reuse the package’s shipped conditional quantile
+summaries.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>Xgrid <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(<span class="fu">lapply</span>(</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a>  causal_dat[, <span class="fu">c</span>(<span class="st">&quot;x1&quot;</span>, <span class="st">&quot;x2&quot;</span>, <span class="st">&quot;x3&quot;</span>)],</span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>  stats<span class="sc">::</span>quantile,</span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a>  <span class="at">probs =</span> <span class="fu">c</span>(<span class="fl">0.25</span>, <span class="fl">0.50</span>, <span class="fl">0.75</span>),</span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>  <span class="at">na.rm =</span> <span class="cn">TRUE</span></span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a>))</span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="fu">rownames</span>(Xgrid) <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;low&quot;</span>, <span class="st">&quot;mid&quot;</span>, <span class="st">&quot;high&quot;</span>)</span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>cqte_fit <span class="ot">&lt;-</span> <span class="fu">cqte</span>(</span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>  fit_causal,</span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>  <span class="at">newdata =</span> Xgrid,</span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>  <span class="at">probs =</span> <span class="fu">c</span>(<span class="fl">0.25</span>, <span class="fl">0.50</span>, <span class="fl">0.75</span>, <span class="fl">0.90</span>, <span class="fl">0.95</span>),</span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a>  <span class="at">interval =</span> <span class="st">&quot;credible&quot;</span>,</span>
+<span id="cb10-13"><a href="#cb10-13" tabindex="-1"></a>  <span class="at">level =</span> <span class="fl">0.95</span>,</span>
+<span id="cb10-14"><a href="#cb10-14" tabindex="-1"></a>  <span class="at">show_progress =</span> <span class="cn">FALSE</span></span>
+<span id="cb10-15"><a href="#cb10-15" tabindex="-1"></a>)</span>
+<span id="cb10-16"><a href="#cb10-16" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="fu">summary</span>(cqte_fit)<span class="sc">$</span>effect_table, <span class="at">format =</span> <span class="st">&quot;html&quot;</span>, <span class="at">digits =</span> <span class="dv">4</span>)</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th style="text-align:right;">
+estimate
+</th>
+<th style="text-align:right;">
+index
+</th>
+<th style="text-align:right;">
+id
+</th>
+<th style="text-align:right;">
+lower
+</th>
+<th style="text-align:right;">
+upper
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right;">
+1.4411
+</td>
+<td style="text-align:right;">
+0.50
+</td>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:right;">
+1.2335
+</td>
+<td style="text-align:right;">
+1.6327
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+1.8302
+</td>
+<td style="text-align:right;">
+0.50
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+1.2346
+</td>
+<td style="text-align:right;">
+2.3465
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+42.4650
+</td>
+<td style="text-align:right;">
+0.90
+</td>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:right;">
+13.1888
+</td>
+<td style="text-align:right;">
+129.6083
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+50.5770
+</td>
+<td style="text-align:right;">
+0.90
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+14.9305
+</td>
+<td style="text-align:right;">
+144.2923
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+134.7847
+</td>
+<td style="text-align:right;">
+0.95
+</td>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:right;">
+25.1334
+</td>
+<td style="text-align:right;">
+478.7875
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+156.0091
+</td>
+<td style="text-align:right;">
+0.95
+</td>
+<td style="text-align:right;">
+2
+</td>
+<td style="text-align:right;">
+28.9078
+</td>
+<td style="text-align:right;">
+518.2162
+</td>
+</tr>
+</tbody>
+</table>
+<p>The columns have the following meaning.</p>
+<ul>
+<li><code>id</code> indexes the covariate profile.</li>
+<li><code>index</code> is the quantile level <span class="math inline">\(\tau\)</span>.</li>
+<li><code>estimate</code> is the posterior point estimate of the
+arm-contrast quantile summary.</li>
+<li><code>lower</code> and <code>upper</code> are the corresponding
+interval bounds.</li>
+</ul>
+<p>In a full causal fit, <code>cqte()</code> would return an effect
+object that can be plotted profile by profile. The important conceptual
+point is that these conditional quantile contrasts are produced by
+evaluating the fitted treated and control quantile functions at the same
+covariate profile and differencing the results.</p>
+</div>
+<div id="predictive-interpretation" class="section level1">
+<h1>Predictive interpretation</h1>
+<p>The causal workflow also supports direct prediction. After fitting
+the causal object, <code>predict()</code> can be used to obtain
+arm-specific densities, survival probabilities, quantiles, means, or
+restricted means at new covariate profiles. For mean and quantile-type
+outputs, the treated-minus-control contrast is often the quantity of
+interest; for density and survival outputs, users frequently inspect the
+arm-specific predictions themselves.</p>
+<p>The predictive logic is the same as in the one-arm case. First, the
+model builds arm-specific conditional distributions. Second, desired
+posterior functionals are evaluated from those distributions. Third,
+contrasts are formed draw by draw and then summarized.</p>
+</div>
+<div id="analysis-summary" class="section level1">
+<h1>Analysis summary</h1>
+<p>The causal analysis in <code>CausalMixGPD</code> is best understood
+as a structured post-processing layer on top of two fitted conditional
+outcome models. The ATE summarizes a standardized mean contrast, but the
+QTE and CQTE summaries reveal whether treatment effects differ across
+the outcome scale or across covariate profiles. In heavy-tailed
+problems, this distinction is often substantive rather than cosmetic.
+Two interventions may have similar average effects while behaving quite
+differently in the upper tail.</p>
+<p>The package’s causal interface is especially useful in that situation
+because the same fitted object supports several scientifically relevant
+views of the treatment effect. Mean, restricted-mean, quantile, and
+conditional contrasts all remain tied to the same posterior predictive
+mechanism.</p>
+</div>
+<div id="customization-options-for-causal-models" class="section level1">
+<h1>Customization options for causal models</h1>
+<p>The package appendix lists the full causal customization surface; the
+most practically important arguments are summarized here.</p>
+<div id="outcome-model-controls" class="section level2">
+<h2>Outcome-model controls</h2>
+<p><code>kernel</code>, <code>backend</code>, <code>GPD</code>,
+<code>components</code>, and <code>param_specs</code> can each be
+supplied either as a single shared value or as arm-specific values of
+length two. This allows the treated and control outcome models to differ
+in kernel family, backend, truncation size, and prior structure.</p>
+<p><code>dpmgpd.causal()</code> activates the spliced tail, while
+<code>dpmix.causal()</code> fits the bulk-only causal analogue.</p>
+</div>
+<div id="propensity-score-controls" class="section level2">
+<h2>Propensity score controls</h2>
+<p><code>PS</code> selects the propensity score model. Common values are
+<code>&quot;logit&quot;</code>, <code>&quot;probit&quot;</code>, <code>&quot;naive&quot;</code>, and
+<code>FALSE</code>.</p>
+<p><code>ps_scale</code> controls whether the propensity score enters
+the outcome model on the probability scale or the logit scale.</p>
+<p><code>ps_summary</code> selects the posterior summary of the
+propensity score appended to the outcome regressors, typically
+<code>&quot;mean&quot;</code> or <code>&quot;median&quot;</code>.</p>
+<p><code>ps_prior</code>, <code>ps_clamp</code>, and
+<code>include_intercept</code> provide additional control over
+propensity score estimation and numerical stability.</p>
+</div>
+<div id="mcmc-controls" class="section level2">
+<h2>MCMC controls</h2>
+<p>The causal workflow separates iteration controls for the propensity
+score stage and the outcome stage through <code>mcmc_ps</code> and
+<code>mcmc_outcome</code>.</p>
+<p><code>parallel_arms</code>, <code>workers</code>, and related runtime
+arguments can be used when the treated and control models are fitted in
+parallel.</p>
+</div>
+<div id="effect-and-prediction-controls" class="section level2">
+<h2>Effect and prediction controls</h2>
+<p><code>ate()</code>, <code>att()</code>, <code>cate()</code>, and
+related functions accept <code>type = &quot;mean&quot;</code> or
+<code>&quot;rmean&quot;</code> when the target is mean-based.</p>
+<p><code>qte()</code>, <code>qtt()</code>, and <code>cqte()</code> use
+the argument <code>probs</code> to specify the quantile levels.</p>
+<p>Effect intervals are controlled by <code>interval</code> and
+<code>level</code>, just as in the one-arm workflow.</p>
+<p><code>predict()</code> supports the same distributional output types
+as the one-arm interface, now interpreted in an arm-specific or
+contrast-based manner depending on the chosen output.</p>
+</div>
+</div>
+<div id="session-information" class="section level1">
+<h1>Session information</h1>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="co">#&gt; R version 4.5.3 (2026-03-11 ucrt)</span></span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a><span class="co">#&gt; Platform: x86_64-w64-mingw32/x64</span></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a><span class="co">#&gt; Running under: Windows 11 x64 (build 26200)</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a><span class="co">#&gt; Matrix products: default</span></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a><span class="co">#&gt;   LAPACK version 3.12.1</span></span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a><span class="co">#&gt; locale:</span></span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="co">#&gt; [1] LC_COLLATE=C                          </span></span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a><span class="co">#&gt; [2] LC_CTYPE=English_United States.utf8   </span></span>
+<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a><span class="co">#&gt; [3] LC_MONETARY=English_United States.utf8</span></span>
+<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a><span class="co">#&gt; [4] LC_NUMERIC=C                          </span></span>
+<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a><span class="co">#&gt; [5] LC_TIME=English_United States.utf8    </span></span>
+<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a><span class="co">#&gt; time zone: America/New_York</span></span>
+<span id="cb11-17"><a href="#cb11-17" tabindex="-1"></a><span class="co">#&gt; tzcode source: internal</span></span>
+<span id="cb11-18"><a href="#cb11-18" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-19"><a href="#cb11-19" tabindex="-1"></a><span class="co">#&gt; attached base packages:</span></span>
+<span id="cb11-20"><a href="#cb11-20" tabindex="-1"></a><span class="co">#&gt; [1] stats     graphics  grDevices utils     datasets  methods   base     </span></span>
+<span id="cb11-21"><a href="#cb11-21" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-22"><a href="#cb11-22" tabindex="-1"></a><span class="co">#&gt; other attached packages:</span></span>
+<span id="cb11-23"><a href="#cb11-23" tabindex="-1"></a><span class="co">#&gt; [1] ggplot2_4.0.2      CausalMixGPD_0.7.0 nimble_1.4.0      </span></span>
+<span id="cb11-24"><a href="#cb11-24" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-25"><a href="#cb11-25" tabindex="-1"></a><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
+<span id="cb11-26"><a href="#cb11-26" tabindex="-1"></a><span class="co">#&gt;  [1] gtable_0.3.6        jsonlite_2.0.0      dplyr_1.2.0        </span></span>
+<span id="cb11-27"><a href="#cb11-27" tabindex="-1"></a><span class="co">#&gt;  [4] compiler_4.5.3      tidyselect_1.2.1    parallel_4.5.3     </span></span>
+<span id="cb11-28"><a href="#cb11-28" tabindex="-1"></a><span class="co">#&gt;  [7] jquerylib_0.1.4     scales_1.4.0        yaml_2.3.12        </span></span>
+<span id="cb11-29"><a href="#cb11-29" tabindex="-1"></a><span class="co">#&gt; [10] fastmap_1.2.0       lattice_0.22-9      coda_0.19-4.1      </span></span>
+<span id="cb11-30"><a href="#cb11-30" tabindex="-1"></a><span class="co">#&gt; [13] R6_2.6.1            labeling_0.4.3      generics_0.1.4     </span></span>
+<span id="cb11-31"><a href="#cb11-31" tabindex="-1"></a><span class="co">#&gt; [16] igraph_2.2.1        knitr_1.51          tibble_3.3.0       </span></span>
+<span id="cb11-32"><a href="#cb11-32" tabindex="-1"></a><span class="co">#&gt; [19] bslib_0.10.0        pillar_1.11.1       RColorBrewer_1.1-3 </span></span>
+<span id="cb11-33"><a href="#cb11-33" tabindex="-1"></a><span class="co">#&gt; [22] rlang_1.1.7         cachem_1.1.0        xfun_0.56          </span></span>
+<span id="cb11-34"><a href="#cb11-34" tabindex="-1"></a><span class="co">#&gt; [25] sass_0.4.10         S7_0.2.1            cli_3.6.5          </span></span>
+<span id="cb11-35"><a href="#cb11-35" tabindex="-1"></a><span class="co">#&gt; [28] withr_3.0.2         magrittr_2.0.4      digest_0.6.39      </span></span>
+<span id="cb11-36"><a href="#cb11-36" tabindex="-1"></a><span class="co">#&gt; [31] grid_4.5.3          rstudioapi_0.18.0   lifecycle_1.0.5    </span></span>
+<span id="cb11-37"><a href="#cb11-37" tabindex="-1"></a><span class="co">#&gt; [34] vctrs_0.7.1         evaluate_1.0.5      pracma_2.4.6       </span></span>
+<span id="cb11-38"><a href="#cb11-38" tabindex="-1"></a><span class="co">#&gt; [37] glue_1.8.0          farver_2.1.2        numDeriv_2016.8-1.1</span></span>
+<span id="cb11-39"><a href="#cb11-39" tabindex="-1"></a><span class="co">#&gt; [40] rmarkdown_2.30      tools_4.5.3         pkgconfig_2.0.3    </span></span>
+<span id="cb11-40"><a href="#cb11-40" tabindex="-1"></a><span class="co">#&gt; [43] htmltools_0.5.9</span></span></code></pre></div>
+<div id="refs" class="references csl-bib-body hanging-indent">
+<div id="ref-ImbensRubin2015" class="csl-entry">
+Imbens, Guido W., and Donald B. Rubin. 2015. <em>Causal Inference for
+Statistics, Social, and Biomedical Sciences: An Introduction</em>.
+Cambridge University Press.
+</div>
+<div id="ref-RosenbaumRubin1983" class="csl-entry">
+Rosenbaum, Paul R., and Donald B. Rubin. 1983. <span>“The Central Role
+of the Propensity Score in Observational Studies for Causal
+Effects.”</span> <em>Biometrika</em> 70 (1): 41–55. <a href="https://doi.org/10.1093/biomet/70.1.41">https://doi.org/10.1093/biomet/70.1.41</a>.
+</div>
+<div id="ref-Rubin1974" class="csl-entry">
+Rubin, Donald B. 1974. <span>“Estimating Causal Effects of Treatments in
+Randomized and Nonrandomized Studies.”</span> <em>Journal of Educational
+Psychology</em> 66 (5): 688–701. <a href="https://doi.org/10.1037/h0037350">https://doi.org/10.1037/h0037350</a>.
+</div>
+</div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

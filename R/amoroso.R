@@ -1,0 +1,873 @@
+#' Amoroso mixture distribution
+#'
+#' Finite mixture of Amoroso components for flexible positive-support bulk modeling.
+#'
+#' The mixture density is
+#' \deqn{
+#' f(x) = \sum_{k = 1}^K \tilde{w}_k f_{Amoroso}(x \mid a_k, \theta_k, \alpha_k, \beta_k),
+#' }
+#' with normalized weights \eqn{\tilde{w}_k}. These scalar functions are NIMBLE-compatible; for
+#' vectorized R usage, use [amoroso_lowercase()].
+#'
+#' @param x Numeric scalar giving the point at which the density is evaluated.
+#' @param q Numeric scalar giving the point at which the distribution function is evaluated.
+#' @param p Numeric scalar probability in \eqn{(0,1)} for the quantile function.
+#' @param n Integer giving the number of draws. For portability inside NIMBLE,
+#'   the RNG implementation supports \code{n = 1}.
+#' @param w Numeric vector of mixture weights of length \eqn{K}. The functions treat the weights
+#'   as non-negative and normalize them internally when needed.
+#' @param loc Numeric vector of length \eqn{K} giving component locations.
+#' @param scale Numeric vector of length \eqn{K} giving component scales. Negative values flip support
+#'   for the corresponding component.
+#' @param shape1 Numeric vector of length \eqn{K} giving the first Amoroso shape parameter for each component.
+#' @param shape2 Numeric vector of length \eqn{K} giving the second Amoroso shape parameter for each component.
+#' @param log Logical; if \code{TRUE}, return the log-density (integer flag \code{0/1} in NIMBLE).
+#' @param lower.tail Logical; if \code{TRUE} (default), probabilities are \eqn{P(X \le q)}.
+#' @param log.p Logical; if \code{TRUE}, probabilities are returned on the log scale.
+#' @param tol Numeric scalar tolerance passed to \code{stats::uniroot} in quantile inversion.
+#' @param maxiter Integer maximum number of iterations for \code{stats::uniroot}.
+#'
+#' @return Mixture density/CDF/RNG functions return numeric scalars. `qAmorosoMix()` returns a
+#'   numeric vector with the same length as `p`.
+#'
+#' @details
+#' The Amoroso family is especially useful for positive-support data because it can reproduce a wide
+#' range of skewed and heavy-right-tail shapes while remaining analytically tractable through its
+#' gamma transformation. The mixture CDF is
+#' \deqn{
+#' F(x) = \sum_{k=1}^K \tilde{w}_k F_{Amoroso}(x \mid a_k,\theta_k,\alpha_k,\beta_k),
+#' }
+#' and random generation proceeds by selecting a component and sampling from that component.
+#'
+#' Closed-form mixture quantiles are not available, so \code{qAmorosoMix()} inverts the mixture CDF
+#' numerically. The analytical mixture mean is the weighted average of the component means,
+#' \eqn{a_k + \theta_k \Gamma(\alpha_k + 1/\beta_k) / \Gamma(\alpha_k)}, whenever those component
+#' moments exist.
+#'
+#' @seealso [amoroso_mixgpd()], [amoroso_gpd()], [amoroso_lowercase()],
+#'   [build_nimble_bundle()], [kernel_support_table()].
+#' @family amoroso kernel families
+#'
+#' @examples
+#' w <- c(0.60, 0.25, 0.15)
+#' loc <- c(0, 1, 2)
+#' scale <- c(1.0, 1.2, 1.6)
+#' shape1 <- c(2, 4, 6)
+#' shape2 <- c(1.0, 1.2, 1.5)
+#'
+#' dAmorosoMix(2.0, w, loc, scale, shape1, shape2, log = 0)
+#' pAmorosoMix(2.0, w, loc, scale, shape1, shape2, lower.tail = 1, log.p = 0)
+#' qAmorosoMix(0.50, w, loc, scale, shape1, shape2)
+#' qAmorosoMix(0.95, w, loc, scale, shape1, shape2)
+#' replicate(10, rAmorosoMix(1, w, loc, scale, shape1, shape2))
+#' @rdname amoroso_mix
+#' @name amoroso_mix
+#' @aliases dAmorosoMix pAmorosoMix rAmorosoMix qAmorosoMix
+NULL
+
+
+#' @describeIn amoroso_mix Density Function of Amoroso Mixture Distribution
+#' @export
+dAmorosoMix <- nimble::nimbleFunction(
+  run = function(x = double(0),
+                 w = double(1),
+                 loc = double(1),
+                 scale = double(1),
+                 shape1 = double(1),
+                 shape2 = double(1),
+                 log = integer(0, default = 0)) {
+    returnType(double(0))
+
+    eps <- 1e-300
+    K <- length(w)
+    wsum <- sum(w)
+    if (wsum <= 0.0) {
+      if (log == 1) return(-1.0e300) else return(0.0)
+    }
+    ww <- w / wsum
+
+    s0 <- 0.0
+    for (j in 1:K) {
+      s0 <- s0 + ww[j] * dAmoroso(x, loc[j], scale[j], shape1[j], shape2[j], 0)
+    }
+    if (s0 < eps) s0 <- eps
+    if (log == 1) return(log(s0)) else return(s0)
+  }
+)
+
+#' @describeIn amoroso_mix Cumulative Distribution Function of Amoroso Mixture Distribution
+#' @export
+pAmorosoMix <- nimble::nimbleFunction(
+  run = function(q = double(0),
+                 w = double(1),
+                 loc = double(1),
+                 scale = double(1),
+                 shape1 = double(1),
+                 shape2 = double(1),
+                 lower.tail = integer(0, default = 1),
+                 log.p = integer(0, default = 0)) {
+    returnType(double(0))
+
+    eps <- 1e-300
+    K <- length(w)
+    wsum <- sum(w)
+    if (wsum <= 0.0) {
+      if (log.p != 0) return(-1.0e300) else return(0.0)
+    }
+    ww <- w / wsum
+
+    cdf <- 0.0
+    for (j in 1:K) {
+      cdf <- cdf + ww[j] * pAmoroso(q, loc[j], scale[j], shape1[j], shape2[j], 1, 0)
+    }
+
+    if (is.nan(cdf)) cdf <- 0.0
+    if (cdf < 0.0) cdf <- 0.0
+    if (cdf > 1.0) cdf <- 1.0
+
+    if (lower.tail == 0) cdf <- 1.0 - cdf
+    if (log.p != 0) return(log(max(cdf, eps)))
+    return(cdf)
+  }
+)
+
+#' @describeIn amoroso_mix Random Generation for Amoroso Mixture Distribution
+#' @export
+rAmorosoMix <- nimble::nimbleFunction(
+  run = function(n = integer(0),
+                 w = double(1),
+                 loc = double(1),
+                 scale = double(1),
+                 shape1 = double(1),
+                 shape2 = double(1)) {
+    returnType(double(0))
+
+    if (n != 1) return(0.0)
+
+    K <- length(w)
+    wsum <- sum(w)
+    if (wsum <= 0.0) return(0.0)
+
+    u <- runif(1, 0.0, wsum)
+    cw <- 0.0
+    idx <- 1
+    found <- 0
+
+    for (j in 1:K) {
+      cw <- cw + w[j]
+      if (found == 0) {
+        if (u <= cw) {
+          idx <- j
+          found <- 1
+        }
+      }
+    }
+
+    return(rAmoroso(1, loc[idx], scale[idx], shape1[idx], shape2[idx]))
+  }
+)
+
+#' @describeIn amoroso_mix Quantile Function of Amoroso Mixture Distribution
+#' @export
+qAmorosoMix <- function(p, w, loc, scale, shape1, shape2,
+                        lower.tail = TRUE, log.p = FALSE,
+                        tol = 1e-10, maxiter = 200) {
+  if (log.p) p <- exp(p)
+  if (!lower.tail) p <- 1 - p
+  p <- pmax(pmin(p, 1), 0)
+  w <- as.numeric(w); w <- w / sum(w)
+
+  out <- numeric(length(p))
+  for (i in seq_along(p)) {
+    pi <- p[i]
+    if (pi <= 0) { out[i] <- -Inf; next }
+    if (pi >= 1) { out[i] <- Inf; next }
+
+    lo <- min(qAmoroso(pi, loc, scale, shape1, shape2, lower.tail = TRUE, log.p = FALSE), na.rm = TRUE)
+    hi <- max(qAmoroso(pi, loc, scale, shape1, shape2, lower.tail = TRUE, log.p = FALSE), na.rm = TRUE)
+    if (!is.finite(lo)) lo <- -1e10
+    if (!is.finite(hi)) hi <- 1e10
+    if (lo > hi) {
+      tmp <- lo
+      lo <- hi
+      hi <- tmp
+    }
+    if (lo == hi) {
+      lo <- lo - 1
+      hi <- hi + 1
+    }
+    f_lo <- as.numeric(pAmorosoMix(lo, w, loc, scale, shape1, shape2, 1, 0) - pi)
+    f_hi <- as.numeric(pAmorosoMix(hi, w, loc, scale, shape1, shape2, 1, 0) - pi)
+    iter <- 0L
+    while (is.finite(f_lo) && f_lo > 0 && lo > -1e20 && iter < 60L) {
+      step <- max(1, abs(lo))
+      lo <- lo - step
+      f_lo <- as.numeric(pAmorosoMix(lo, w, loc, scale, shape1, shape2, 1, 0) - pi)
+      iter <- iter + 1L
+    }
+    iter <- 0L
+    while (is.finite(f_hi) && f_hi < 0 && hi < 1e20 && iter < 60L) {
+      step <- max(1, abs(hi))
+      hi <- hi + step
+      f_hi <- as.numeric(pAmorosoMix(hi, w, loc, scale, shape1, shape2, 1, 0) - pi)
+      iter <- iter + 1L
+    }
+    if (!is.finite(lo) || !is.finite(hi) || lo >= hi || !is.finite(f_lo) || !is.finite(f_hi) || f_lo * f_hi > 0) {
+      out[i] <- NA_real_
+    } else {
+      out[i] <- stats::uniroot(
+        function(z) pAmorosoMix(z, w, loc, scale, shape1, shape2, 1, 0) - pi,
+        interval = c(lo, hi),
+        tol = tol, maxiter = maxiter
+      )$root
+    }
+  }
+  out
+}
+
+meanAmorosoMix <- function(w, loc, scale, shape1, shape2) {
+  ww <- .mean_norm_mix_weights(w)
+  if (is.null(ww)) return(NA_real_)
+  loc <- as.numeric(loc)
+  scale <- as.numeric(scale)
+  shape1 <- as.numeric(shape1)
+  shape2 <- as.numeric(shape2)
+  if (!all(lengths(list(loc, scale, shape1, shape2)) == length(ww))) return(NA_real_)
+  if (any(!is.finite(loc)) || any(!is.finite(scale)) || any(!is.finite(shape1)) || any(!is.finite(shape2))) return(NA_real_)
+  if (any(scale <= 0) || any(shape1 <= 0) || any(shape2 <= 0)) return(NA_real_)
+  comp_mean <- loc + scale * exp(lgamma(shape1 + 1 / shape2) - lgamma(shape1))
+  sum(ww * comp_mean)
+}
+
+meanAmorosoMixTrunc <- function(w, loc, scale, shape1, shape2, threshold) {
+  ww <- .mean_norm_mix_weights(w)
+  if (is.null(ww)) return(NA_real_)
+  loc <- as.numeric(loc)
+  scale <- as.numeric(scale)
+  shape1 <- as.numeric(shape1)
+  shape2 <- as.numeric(shape2)
+  u <- as.numeric(threshold)[1]
+  if (!all(lengths(list(loc, scale, shape1, shape2)) == length(ww))) return(NA_real_)
+  if (any(!is.finite(loc)) || any(!is.finite(scale)) || any(!is.finite(shape1)) || any(!is.finite(shape2)) || is.na(u)) return(NA_real_)
+  if (any(scale <= 0) || any(shape1 <= 0) || any(shape2 <= 0)) return(NA_real_)
+  if (is.infinite(u) && u > 0) return(meanAmorosoMix(w = ww, loc = loc, scale = scale, shape1 = shape1, shape2 = shape2))
+  z <- pmax((u - loc) / scale, 0)^shape2
+  cdf_u <- stats::pgamma(z, shape = shape1, scale = 1)
+  moment_u <- exp(lgamma(shape1 + 1 / shape2) - lgamma(shape1)) *
+    stats::pgamma(z, shape = shape1 + 1 / shape2, scale = 1)
+  sum(ww * (loc * cdf_u + scale * moment_u))
+}
+
+
+#' Amoroso mixture with a GPD tail
+#'
+#' Spliced bulk-tail family formed by attaching a generalized Pareto tail to an Amoroso mixture
+#' bulk. Let \eqn{F_{mix}} denote the Amoroso mixture CDF. The spliced CDF is
+#' \eqn{F(x)=F_{mix}(x)} for \eqn{x<threshold} and
+#' \eqn{F(x)=F_{mix}(threshold) + \left\{1-F_{mix}(threshold)\right\}G(x)} for \eqn{x\ge threshold}, where \eqn{G}
+#' is the GPD CDF for exceedances above \code{threshold}.
+#'
+#' The density, CDF, and RNG are implemented as \code{nimbleFunction}s for use in NIMBLE models.
+#' The quantile function is an R function that uses numerical inversion in the bulk region and
+#' the closed-form GPD quantile in the tail region.
+#'
+#' @param x Numeric scalar giving the point at which the density is evaluated.
+#' @param q Numeric scalar giving the point at which the distribution function is evaluated.
+#' @param p Numeric scalar probability in \eqn{(0,1)} for the quantile function.
+#' @param n Integer giving the number of draws. For portability inside NIMBLE,
+#'   the RNG implementation supports \code{n = 1}.
+#' @param w Numeric vector of mixture weights of length \eqn{K}. The functions treat the weights
+#'   as non-negative and normalize them internally when needed.
+#' @param loc Numeric vector of length \eqn{K} giving component locations.
+#' @param scale Numeric vector of length \eqn{K} giving component scales.
+#' @param shape1 Numeric vector of length \eqn{K} giving the first Amoroso shape parameter for each component.
+#' @param shape2 Numeric vector of length \eqn{K} giving the second Amoroso shape parameter for each component.
+#' @param threshold Numeric scalar threshold at which the GPD tail is attached.
+#' @param tail_scale Numeric scalar GPD scale parameter; must be positive.
+#' @param tail_shape Numeric scalar GPD shape parameter.
+#' @param log Logical; if \code{TRUE}, return the log-density (integer flag \code{0/1} in NIMBLE).
+#' @param lower.tail Logical; if \code{TRUE} (default), probabilities are \eqn{P(X \le q)}.
+#' @param log.p Logical; if \code{TRUE}, probabilities are returned on the log scale.
+#' @param tol Numeric scalar tolerance passed to \code{stats::uniroot} in quantile inversion.
+#' @param maxiter Integer maximum number of iterations for \code{stats::uniroot}.
+#'
+#' @return Spliced density/CDF/RNG functions return numeric scalars. `qAmorosoMixGpd()` returns a
+#'   numeric vector with the same length as `p`.
+#'
+#' @details
+#' The Amoroso mixture describes the bulk up to the threshold and the generalized Pareto describes
+#' exceedances above it. If \eqn{F_{mix}(u)=p_u}, then the splice uses
+#' \deqn{
+#' f(x) =
+#' \left\{
+#' \begin{array}{ll}
+#' f_{mix}(x), & x < u, \\
+#' (1-p_u) g_{GPD}(x \mid u,\sigma_u,\xi), & x \ge u.
+#' \end{array}
+#' \right.
+#' }
+#' Bulk quantiles are computed numerically from the Amoroso mixture CDF and tail quantiles are
+#' obtained from the GPD inverse after rescaling the tail probability.
+#'
+#' @seealso [amoroso_mix()], [amoroso_gpd()], [gpd()], [amoroso_lowercase()], [dpmgpd()].
+#' @family amoroso kernel families
+#'
+#' @examples
+#' w <- c(0.60, 0.25, 0.15)
+#' loc <- c(0, 1, 2)
+#' scale <- c(1.0, 1.2, 1.6)
+#' shape1 <- c(2, 4, 6)
+#' shape2 <- c(1.0, 1.2, 1.5)
+#' threshold <- 3
+#' tail_scale <- 1.0
+#' tail_shape <- 0.2
+#'
+#' dAmorosoMixGpd(4.0, w, loc, scale, shape1, shape2,
+#'               threshold, tail_scale, tail_shape, log = 0)
+#' pAmorosoMixGpd(4.0, w, loc, scale, shape1, shape2,
+#'               threshold, tail_scale, tail_shape, lower.tail = 1, log.p = 0)
+#' qAmorosoMixGpd(0.50, w, loc, scale, shape1, shape2,
+#'               threshold, tail_scale, tail_shape)
+#' qAmorosoMixGpd(0.95, w, loc, scale, shape1, shape2,
+#'               threshold, tail_scale, tail_shape)
+#' replicate(10, rAmorosoMixGpd(1, w, loc, scale, shape1, shape2,
+#'                             threshold, tail_scale, tail_shape))
+#' @rdname amoroso_mixgpd
+#' @name amoroso_mixgpd
+#' @aliases dAmorosoMixGpd pAmorosoMixGpd rAmorosoMixGpd qAmorosoMixGpd
+NULL
+
+
+
+#' @describeIn amoroso_mixgpd Density Function of Amoroso Mixture Distribution with GPD Tail
+#' @export
+dAmorosoMixGpd <- nimble::nimbleFunction(
+  run = function(x = double(0),
+                 w = double(1),
+                 loc = double(1),
+                 scale = double(1),
+                 shape1 = double(1),
+                 shape2 = double(1),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 log = integer(0, default = 0)) {
+    returnType(double(0))
+
+    eps <- 1e-300
+    if (x < threshold) return(dAmorosoMix(x, w, loc, scale, shape1, shape2, log))
+
+    Fu <- pAmorosoMix(threshold, w, loc, scale, shape1, shape2, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    val <- (1.0 - Fu) * dGpd(x, threshold, tail_scale, tail_shape, 0)
+    if (val < eps) val <- eps
+
+    if (log == 1) return(log(val)) else return(val)
+  }
+)
+
+#' @describeIn amoroso_mixgpd Cumulative Distribution Function of Amoroso Mixture Distribution with GPD Tail
+#' @export
+pAmorosoMixGpd <- nimble::nimbleFunction(
+  run = function(q = double(0),
+                 w = double(1),
+                 loc = double(1),
+                 scale = double(1),
+                 shape1 = double(1),
+                 shape2 = double(1),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 lower.tail = integer(0, default = 1),
+                 log.p = integer(0, default = 0)) {
+    returnType(double(0))
+
+    eps <- 1e-300
+    if (q < threshold) return(pAmorosoMix(q, w, loc, scale, shape1, shape2, lower.tail, log.p))
+
+    Fu <- pAmorosoMix(threshold, w, loc, scale, shape1, shape2, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    G <- pGpd(q, threshold, tail_scale, tail_shape, 1, 0)
+    cdf <- Fu + (1.0 - Fu) * G
+
+    if (is.nan(cdf)) cdf <- 0.0
+    if (cdf < 0.0) cdf <- 0.0
+    if (cdf > 1.0) cdf <- 1.0
+
+    if (lower.tail == 0) cdf <- 1.0 - cdf
+    if (log.p != 0) return(log(max(cdf, eps)))
+    return(cdf)
+  }
+)
+
+#' @describeIn amoroso_mixgpd Random Generation for Amoroso Mixture Distribution with GPD Tail
+#' @export
+rAmorosoMixGpd <- nimble::nimbleFunction(
+  run = function(n = integer(0),
+                 w = double(1),
+                 loc = double(1),
+                 scale = double(1),
+                 shape1 = double(1),
+                 shape2 = double(1),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0)) {
+    returnType(double(0))
+
+    if (n != 1) return(0.0)
+
+    Fu <- pAmorosoMix(threshold, w, loc, scale, shape1, shape2, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    uu <- runif(1, 0.0, 1.0)
+    if (uu < Fu) return(rAmorosoMix(1, w, loc, scale, shape1, shape2))
+    return(rGpd(1, threshold, tail_scale, tail_shape))
+  }
+)
+
+#' @describeIn amoroso_mixgpd Quantile Function of Amoroso Mixture Distribution with GPD Tail
+#' @export
+qAmorosoMixGpd <- function(p, w, loc, scale, shape1, shape2,
+                           threshold, tail_scale, tail_shape,
+                           lower.tail = TRUE, log.p = FALSE,
+                           tol = 1e-10, maxiter = 200) {
+  if (log.p) p <- exp(p)
+  if (!lower.tail) p <- 1 - p
+  p <- pmax(pmin(p, 1), 0)
+  w <- as.numeric(w); w <- w / sum(w)
+
+  # Fu computed using the compiled mixture CDF at threshold (consistent with PD/R definitions)
+  Fu <- pAmorosoMix(threshold, w, loc, scale, shape1, shape2, 1, 0)
+  Fu <- max(min(as.numeric(Fu), 1), 0)
+
+  out <- numeric(length(p))
+  for (i in seq_along(p)) {
+    pi <- p[i]
+    if (pi <= Fu) {
+      out[i] <- qAmorosoMix(pi, w, loc, scale, shape1, shape2,
+                            lower.tail = TRUE, log.p = FALSE, tol = tol, maxiter = maxiter)
+    } else {
+      g <- if (Fu >= 1) 0 else (pi - Fu) / (1 - Fu)
+      out[i] <- qGpd(g, threshold = threshold, scale = tail_scale, shape = tail_shape)
+    }
+  }
+  out
+}
+
+
+#' Amoroso with a GPD tail
+#'
+#' Spliced family obtained by attaching a generalized Pareto tail above `threshold` to a single
+#' Amoroso bulk.
+#'
+#' @param x Numeric scalar giving the point at which the density is evaluated.
+#' @param q Numeric scalar giving the point at which the distribution function is evaluated.
+#' @param p Numeric scalar probability in \eqn{(0,1)} for the quantile function.
+#' @param n Integer giving the number of draws. The RNG implementation supports \code{n = 1}.
+#' @param loc Numeric scalar location parameter of the Amoroso bulk.
+#' @param scale Numeric scalar scale parameter of the Amoroso bulk.
+#' @param shape1 Numeric scalar first Amoroso shape parameter.
+#' @param shape2 Numeric scalar second Amoroso shape parameter.
+#' @param threshold Numeric scalar threshold at which the GPD tail is attached.
+#' @param tail_scale Numeric scalar GPD scale parameter; must be positive.
+#' @param tail_shape Numeric scalar GPD shape parameter.
+#' @param log Logical; if \code{TRUE}, return the log-density (integer flag \code{0/1} in NIMBLE).
+#' @param lower.tail Logical; if \code{TRUE} (default), probabilities are \eqn{P(X \le q)}.
+#' @param log.p Logical; if \code{TRUE}, probabilities are returned on the log scale.
+#'
+#' @return Spliced density/CDF/RNG functions return numeric scalars. `qAmorosoGpd()` returns a
+#'   numeric vector with the same length as `p`.
+#'
+#' @details
+#' This is the single-component Amoroso splice. The Amoroso law controls the distribution below the
+#' threshold and the GPD controls exceedances above it, scaled so that the resulting CDF is
+#' continuous at the threshold. The ordinary mean of the spliced law exists only when the tail
+#' satisfies \eqn{\xi < 1}; otherwise users should rely on restricted means or quantile summaries.
+#'
+#' @seealso [amoroso_mix()], [amoroso_mixgpd()], [gpd()], [amoroso_lowercase()].
+#' @family amoroso kernel families
+#'
+#' @examples
+#' loc <- 0
+#' scale <- 1.5
+#' shape1 <- 2
+#' shape2 <- 1.2
+#' threshold <- 3
+#' tail_scale <- 1.0
+#' tail_shape <- 0.2
+#'
+#' dAmorosoGpd(4.0, loc, scale, shape1, shape2,
+#'            threshold, tail_scale, tail_shape, log = 0)
+#' pAmorosoGpd(4.0, loc, scale, shape1, shape2,
+#'            threshold, tail_scale, tail_shape, lower.tail = 1, log.p = 0)
+#' qAmorosoGpd(0.50, loc, scale, shape1, shape2,
+#'            threshold, tail_scale, tail_shape)
+#' qAmorosoGpd(0.95, loc, scale, shape1, shape2,
+#'            threshold, tail_scale, tail_shape)
+#' replicate(10, rAmorosoGpd(1, loc, scale, shape1, shape2,
+#'                          threshold, tail_scale, tail_shape))
+#' @rdname amoroso_gpd
+#' @name amoroso_gpd
+#' @aliases dAmorosoGpd pAmorosoGpd rAmorosoGpd qAmorosoGpd
+NULL
+
+#' @describeIn amoroso_gpd Density Function of Amoroso Distribution with GPD Tail
+#' @export
+dAmorosoGpd <- nimble::nimbleFunction(
+  run = function(x = double(0),
+                 loc = double(0),
+                 scale = double(0),
+                 shape1 = double(0),
+                 shape2 = double(0),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 log = integer(0, default = 0)) {
+    returnType(double(0))
+
+    eps <- 1e-300
+    if (x < threshold) return(dAmoroso(x, loc, scale, shape1, shape2, log))
+
+    Fu <- pAmoroso(threshold, loc, scale, shape1, shape2, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    val <- (1.0 - Fu) * dGpd(x, threshold, tail_scale, tail_shape, 0)
+    if (val < eps) val <- eps
+
+    if (log == 1) return(log(val)) else return(val)
+  }
+)
+
+#' @describeIn amoroso_gpd Cumulative Distribution Function of Amoroso Distribution with GPD Tail
+#' @export
+pAmorosoGpd <- nimble::nimbleFunction(
+  run = function(q = double(0),
+                 loc = double(0),
+                 scale = double(0),
+                 shape1 = double(0),
+                 shape2 = double(0),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0),
+                 lower.tail = integer(0, default = 1),
+                 log.p = integer(0, default = 0)) {
+    returnType(double(0))
+
+    eps <- 1e-300
+    if (q < threshold) return(pAmoroso(q, loc, scale, shape1, shape2, lower.tail, log.p))
+
+    Fu <- pAmoroso(threshold, loc, scale, shape1, shape2, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    G <- pGpd(q, threshold, tail_scale, tail_shape, 1, 0)
+    cdf <- Fu + (1.0 - Fu) * G
+
+    if (is.nan(cdf)) cdf <- 0.0
+    if (cdf < 0.0) cdf <- 0.0
+    if (cdf > 1.0) cdf <- 1.0
+
+    if (lower.tail == 0) cdf <- 1.0 - cdf
+    if (log.p != 0) return(log(max(cdf, eps)))
+    return(cdf)
+  }
+)
+
+#' @describeIn amoroso_gpd Random Generation for Amoroso Distribution with GPD Tail
+#' @export
+rAmorosoGpd <- nimble::nimbleFunction(
+  run = function(n = integer(0),
+                 loc = double(0),
+                 scale = double(0),
+                 shape1 = double(0),
+                 shape2 = double(0),
+                 threshold = double(0),
+                 tail_scale = double(0),
+                 tail_shape = double(0)) {
+    returnType(double(0))
+
+    if (n != 1) return(0.0)
+
+    Fu <- pAmoroso(threshold, loc, scale, shape1, shape2, 1, 0)
+    if (Fu < 0.0) Fu <- 0.0
+    if (Fu > 1.0) Fu <- 1.0
+
+    uu <- runif(1, 0.0, 1.0)
+    if (uu < Fu) return(rAmoroso(1, loc, scale, shape1, shape2))
+    return(rGpd(1, threshold, tail_scale, tail_shape))
+  }
+)
+
+#' @describeIn amoroso_gpd Quantile Function of Amoroso Distribution with GPD Tail
+#' @export
+#' @param tol Numeric tolerance for numerical inversion in \code{qAmorosoGpd}.
+#' @param maxiter Maximum iterations for numerical inversion in \code{qAmorosoGpd}.
+qAmorosoGpd <- function(p, loc, scale, shape1, shape2,
+                        threshold, tail_scale, tail_shape,
+                        lower.tail = TRUE, log.p = FALSE,
+                        tol = 1e-10, maxiter = 200) {
+  if (log.p) p <- exp(p)
+  if (!lower.tail) p <- 1 - p
+  p <- pmax(pmin(p, 1), 0)
+
+  Fu <- pAmoroso(threshold, loc, scale, shape1, shape2, 1, 0)
+  Fu <- max(min(as.numeric(Fu), 1), 0)
+
+  out <- numeric(length(p))
+  for (i in seq_along(p)) {
+    pi <- p[i]
+    if (pi <= Fu) {
+      # bulk quantile via numerical inversion of base CDF
+      lo <- qAmoroso(pi, loc, scale, shape1, shape2, lower.tail = TRUE, log.p = FALSE)
+      hi <- lo
+      if (!is.finite(lo)) {
+        lo <- -1e10
+        hi <- 1e10
+      }
+      if (lo > hi) {
+        tmp <- lo
+        lo <- hi
+        hi <- tmp
+      }
+      if (lo == hi) {
+        lo <- lo - 1
+        hi <- hi + 1
+      }
+      f_lo <- as.numeric(pAmoroso(lo, loc, scale, shape1, shape2, 1, 0) - pi)
+      f_hi <- as.numeric(pAmoroso(hi, loc, scale, shape1, shape2, 1, 0) - pi)
+      iter <- 0L
+      while (is.finite(f_lo) && f_lo > 0 && lo > -1e20 && iter < 60L) {
+        step <- max(1, abs(lo))
+        lo <- lo - step
+        f_lo <- as.numeric(pAmoroso(lo, loc, scale, shape1, shape2, 1, 0) - pi)
+        iter <- iter + 1L
+      }
+      iter <- 0L
+      while (is.finite(f_hi) && f_hi < 0 && hi < 1e20 && iter < 60L) {
+        step <- max(1, abs(hi))
+        hi <- hi + step
+        f_hi <- as.numeric(pAmoroso(hi, loc, scale, shape1, shape2, 1, 0) - pi)
+        iter <- iter + 1L
+      }
+      if (!is.finite(lo) || !is.finite(hi) || lo >= hi || !is.finite(f_lo) || !is.finite(f_hi) || f_lo * f_hi > 0) {
+        out[i] <- NA_real_
+      } else {
+        out[i] <- stats::uniroot(
+          function(z) pAmoroso(z, loc, scale, shape1, shape2, 1, 0) - pi,
+          interval = c(lo, hi),
+          tol = tol, maxiter = maxiter
+        )$root
+      }
+    } else {
+      g <- if (Fu >= 1) 0 else (pi - Fu) / (1 - Fu)
+      out[i] <- qGpd(g, threshold = threshold, scale = tail_scale, shape = tail_shape)
+    }
+  }
+  out
+}
+
+
+# ==========================================================
+# Lowercase vectorized R wrappers for Amoroso kernels
+# ==========================================================
+
+#' Lowercase vectorized Amoroso distribution functions
+#'
+#' Vectorized R wrappers for the scalar Amoroso-kernel topics in this file.
+#'
+#' @param x Numeric vector of quantiles.
+#' @param q Numeric vector of quantiles.
+#' @param p Numeric vector of probabilities.
+#' @param n Integer number of observations to generate.
+#' @param w Numeric vector of mixture weights.
+#' @param loc,scale,shape1,shape2 Numeric vectors (mix) or scalars (base+gpd) of component parameters.
+#' @param threshold,tail_scale,tail_shape GPD tail parameters (scalars).
+#' @param log Logical; if \code{TRUE}, return log-density.
+#' @param lower.tail Logical; if \code{TRUE} (default), probabilities are \eqn{P(X \le x)}.
+#' @param log.p Logical; if \code{TRUE}, probabilities are on log scale.
+#' @param tol,maxiter Tolerance and max iterations for numerical inversion.
+#'
+#' @return Numeric vector of densities, probabilities, quantiles, or random variates.
+#'
+#' @details
+#' These are vectorized wrappers around the scalar Amoroso routines used internally by the package.
+#' They preserve the same location-scale-shape parameterization and the same piecewise splice logic
+#' for GPD tails. Quantile wrappers therefore continue to rely on the scalar numerical inversion or
+#' scalar GPD inverse exactly as documented for the uppercase functions.
+#'
+#' @seealso [amoroso_mix()], [amoroso_mixgpd()], [amoroso_gpd()], [bundle()],
+#'   [get_kernel_registry()].
+#' @family vectorized kernel helpers
+#'
+#' @examples
+#' w <- c(0.6, 0.3, 0.1)
+#' locs <- c(0.5, 0.5, 0.5)
+#' scls <- c(1, 1.3, 1.6)
+#' s1 <- c(2.5, 3, 4)
+#' s2 <- c(1.2, 1.2, 1.2)
+#'
+#' # Amoroso mixture
+#' damorosomix(c(1, 2, 3), w = w, loc = locs, scale = scls, shape1 = s1, shape2 = s2)
+#' ramorosomix(5, w = w, loc = locs, scale = scls, shape1 = s1, shape2 = s2)
+#'
+#' @name amoroso_lowercase
+#' @rdname amoroso_lowercase
+NULL
+
+# ---- Amoroso Mix lowercase wrappers ----
+
+#' @describeIn amoroso_lowercase Amoroso mixture density (vectorized)
+#' @export
+damorosomix <- function(x, w, loc, scale, shape1, shape2, log = FALSE) {
+  x <- as.numeric(x)
+  if (length(x) == 0L) return(numeric(0L))
+  log_int <- as.integer(log)
+  vapply(x, function(xi) as.numeric(dAmorosoMix(xi, w = w, loc = loc, scale = scale,
+                                                 shape1 = shape1, shape2 = shape2, log = log_int)),
+         numeric(1L))
+}
+
+#' @describeIn amoroso_lowercase Amoroso mixture distribution function (vectorized)
+#' @export
+pamorosomix <- function(q, w, loc, scale, shape1, shape2, lower.tail = TRUE, log.p = FALSE) {
+  q <- as.numeric(q)
+  if (length(q) == 0L) return(numeric(0L))
+  lt_int <- as.integer(lower.tail)
+  lp_int <- as.integer(log.p)
+  vapply(q, function(qi) as.numeric(pAmorosoMix(qi, w = w, loc = loc, scale = scale,
+                                                 shape1 = shape1, shape2 = shape2,
+                                                 lower.tail = lt_int, log.p = lp_int)),
+         numeric(1L))
+}
+
+#' @describeIn amoroso_lowercase Amoroso mixture quantile function (vectorized)
+#' @export
+qamorosomix <- function(p, w, loc, scale, shape1, shape2, lower.tail = TRUE, log.p = FALSE,
+                        tol = 1e-10, maxiter = 200) {
+  qAmorosoMix(p, w = w, loc = loc, scale = scale, shape1 = shape1, shape2 = shape2,
+              lower.tail = lower.tail, log.p = log.p, tol = tol, maxiter = maxiter)
+}
+
+#' @describeIn amoroso_lowercase Amoroso mixture random generation (vectorized)
+#' @export
+ramorosomix <- function(n, w, loc, scale, shape1, shape2) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) stop("'n' must be a single integer.", call. = FALSE)
+  if (n <= 0L) return(numeric(0L))
+  vapply(seq_len(n), function(i) as.numeric(rAmorosoMix(1L, w = w, loc = loc, scale = scale,
+                                                         shape1 = shape1, shape2 = shape2)),
+         numeric(1L))
+}
+
+# ---- Amoroso Mix + GPD lowercase wrappers ----
+
+#' @describeIn amoroso_lowercase Amoroso mixture + GPD density (vectorized)
+#' @export
+damorosomixgpd <- function(x, w, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape, log = FALSE) {
+  x <- as.numeric(x)
+  if (length(x) == 0L) return(numeric(0L))
+  log_int <- as.integer(log)
+  vapply(x, function(xi) as.numeric(dAmorosoMixGpd(xi, w = w, loc = loc, scale = scale,
+                                                    shape1 = shape1, shape2 = shape2,
+                                                    threshold = threshold, tail_scale = tail_scale,
+                                                    tail_shape = tail_shape, log = log_int)),
+         numeric(1L))
+}
+
+#' @describeIn amoroso_lowercase Amoroso mixture + GPD distribution function (vectorized)
+#' @export
+pamorosomixgpd <- function(q, w, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape,
+                           lower.tail = TRUE, log.p = FALSE) {
+  q <- as.numeric(q)
+  if (length(q) == 0L) return(numeric(0L))
+  lt_int <- as.integer(lower.tail)
+  lp_int <- as.integer(log.p)
+  vapply(q, function(qi) as.numeric(pAmorosoMixGpd(qi, w = w, loc = loc, scale = scale,
+                                                    shape1 = shape1, shape2 = shape2,
+                                                    threshold = threshold, tail_scale = tail_scale,
+                                                    tail_shape = tail_shape,
+                                                    lower.tail = lt_int, log.p = lp_int)),
+         numeric(1L))
+}
+
+#' @describeIn amoroso_lowercase Amoroso mixture + GPD quantile function (vectorized)
+#' @export
+qamorosomixgpd <- function(p, w, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape,
+                           lower.tail = TRUE, log.p = FALSE, tol = 1e-10, maxiter = 200) {
+  qAmorosoMixGpd(p, w = w, loc = loc, scale = scale, shape1 = shape1, shape2 = shape2,
+                 threshold = threshold, tail_scale = tail_scale, tail_shape = tail_shape,
+                 lower.tail = lower.tail, log.p = log.p, tol = tol, maxiter = maxiter)
+}
+
+#' @describeIn amoroso_lowercase Amoroso mixture + GPD random generation (vectorized)
+#' @export
+ramorosomixgpd <- function(n, w, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) stop("'n' must be a single integer.", call. = FALSE)
+  if (n <= 0L) return(numeric(0L))
+  vapply(seq_len(n), function(i) as.numeric(rAmorosoMixGpd(1L, w = w, loc = loc, scale = scale,
+                                                           shape1 = shape1, shape2 = shape2,
+                                                           threshold = threshold, tail_scale = tail_scale,
+                                                           tail_shape = tail_shape)),
+         numeric(1L))
+}
+
+# ---- Amoroso + GPD lowercase wrappers ----
+
+#' @describeIn amoroso_lowercase Amoroso + GPD density (vectorized)
+#' @export
+damorosogpd <- function(x, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape, log = FALSE) {
+  x <- as.numeric(x)
+  if (length(x) == 0L) return(numeric(0L))
+  log_int <- as.integer(log)
+  vapply(x, function(xi) as.numeric(dAmorosoGpd(xi, loc = loc, scale = scale,
+                                                 shape1 = shape1, shape2 = shape2,
+                                                 threshold = threshold, tail_scale = tail_scale,
+                                                 tail_shape = tail_shape, log = log_int)),
+         numeric(1L))
+}
+
+#' @describeIn amoroso_lowercase Amoroso + GPD distribution function (vectorized)
+#' @export
+pamorosogpd <- function(q, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape,
+                        lower.tail = TRUE, log.p = FALSE) {
+  q <- as.numeric(q)
+  if (length(q) == 0L) return(numeric(0L))
+  lt_int <- as.integer(lower.tail)
+  lp_int <- as.integer(log.p)
+  vapply(q, function(qi) as.numeric(pAmorosoGpd(qi, loc = loc, scale = scale,
+                                                 shape1 = shape1, shape2 = shape2,
+                                                 threshold = threshold, tail_scale = tail_scale,
+                                                 tail_shape = tail_shape,
+                                                 lower.tail = lt_int, log.p = lp_int)),
+         numeric(1L))
+}
+
+#' @describeIn amoroso_lowercase Amoroso + GPD quantile function (vectorized)
+#' @export
+qamorosogpd <- function(p, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape,
+                        lower.tail = TRUE, log.p = FALSE, tol = 1e-10, maxiter = 200) {
+  qAmorosoGpd(p, loc = loc, scale = scale, shape1 = shape1, shape2 = shape2,
+              threshold = threshold, tail_scale = tail_scale, tail_shape = tail_shape,
+              lower.tail = lower.tail, log.p = log.p, tol = tol, maxiter = maxiter)
+}
+
+#' @describeIn amoroso_lowercase Amoroso + GPD random generation (vectorized)
+#' @export
+ramorosogpd <- function(n, loc, scale, shape1, shape2, threshold, tail_scale, tail_shape) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) stop("'n' must be a single integer.", call. = FALSE)
+  if (n <= 0L) return(numeric(0L))
+  vapply(seq_len(n), function(i) as.numeric(rAmorosoGpd(1L, loc = loc, scale = scale,
+                                                         shape1 = shape1, shape2 = shape2,
+                                                         threshold = threshold, tail_scale = tail_scale,
+                                                         tail_shape = tail_shape)),
+         numeric(1L))
+}
+
