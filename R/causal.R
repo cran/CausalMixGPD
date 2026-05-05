@@ -732,7 +732,7 @@ run_mcmc_causal <- function(bundle, show_progress = TRUE, quiet = FALSE,
     timing = timing_info,
     call = match.call()
   )
-  class(out) <- "causalmixgpd_causal_fit"
+  class(out) <- c("causalmixgpd_causal_fit", "causalmixgpd_fit", "list")
   out
 }
 
@@ -773,6 +773,29 @@ run_mcmc_causal <- function(bundle, show_progress = TRUE, quiet = FALSE,
   list(compute_interval = compute_interval, interval = interval_use, level = as.numeric(level))
 }
 
+.causal_validate_fit <- function(fit) {
+  if (!inherits(fit, "causalmixgpd_causal_fit")) {
+    stop("'fit' must be a 'causalmixgpd_causal_fit' object.", call. = FALSE)
+  }
+  invisible(fit)
+}
+
+.causal_validate_probs <- function(probs) {
+  probs <- as.numeric(probs)
+  if (!length(probs) || anyNA(probs) || any(!is.finite(probs)) || any(probs <= 0 | probs >= 1)) {
+    stop("'probs' must be a numeric vector with values strictly between 0 and 1.", call. = FALSE)
+  }
+  probs
+}
+
+.causal_validate_nsim_mean <- function(nsim_mean) {
+  nsim_mean <- as.integer(nsim_mean)[1]
+  if (!is.finite(nsim_mean) || nsim_mean < 1L) {
+    stop("'nsim_mean' must be an integer >= 1.", call. = FALSE)
+  }
+  nsim_mean
+}
+
 .causal_warn_ignored_marginal_inputs <- function(fn, newdata = NULL, y = NULL, conditional_fn) {
   ignored <- character(0)
   if (!is.null(newdata)) ignored <- c(ignored, "'newdata'")
@@ -800,6 +823,26 @@ run_mcmc_causal <- function(bundle, show_progress = TRUE, quiet = FALSE,
     stop(sprintf("%s() requires covariates in 'newdata' or training X in the fitted model.", fn), call. = FALSE)
   }
   x_pred
+}
+
+#' @export
+cqte <- function(fit,
+                 probs = c(0.1, 0.5, 0.9),
+                 newdata = NULL,
+                 interval = "credible",
+                 level = 0.95,
+                 show_progress = TRUE) {
+  UseMethod("cqte")
+}
+
+#' @export
+cqte.default <- function(fit,
+                         probs = c(0.1, 0.5, 0.9),
+                         newdata = NULL,
+                         interval = "credible",
+                         level = 0.95,
+                         show_progress = TRUE) {
+  .causal_validate_fit(fit)
 }
 
 #' Conditional quantile treatment effects
@@ -853,14 +896,20 @@ run_mcmc_causal <- function(bundle, show_progress = TRUE, quiet = FALSE,
 #' cqte(fit, probs = c(0.5, 0.9), interval = "hpd")  # HPD intervals
 #' cqte(fit, probs = c(0.5, 0.9), interval = NULL)   # No intervals
 #' }
+#' @method cqte causalmixgpd_causal_fit
+#' @aliases cqte
 #' @export
-cqte <- function(fit,
+cqte.causalmixgpd_causal_fit <- function(fit,
                 probs = c(0.1, 0.5, 0.9),
                 newdata = NULL,
                 interval = "credible",
                 level = 0.95,
                 show_progress = TRUE) {
-  stopifnot(inherits(fit, "causalmixgpd_causal_fit"))
+  .causal_validate_fit(fit)
+  probs <- .causal_validate_probs(probs)
+  iv <- .causal_validate_interval(interval = interval, level = level)
+  .causal_require_conditional(fit, fn = "cqte")
+  x_pred <- .causal_resolve_conditional_x(fit = fit, newdata = newdata, fn = "cqte")
   progress_ctx <- .cmgpd_progress_start(
     total_steps = 5L,
     enabled = isTRUE(show_progress),
@@ -870,12 +919,9 @@ cqte <- function(fit,
   on.exit(.cmgpd_progress_done(progress_ctx, final_label = NULL), add = TRUE)
   .cmgpd_progress_step(progress_ctx, "Preparing CQTE inputs")
 
-  .causal_require_conditional(fit, fn = "cqte")
-  iv <- .causal_validate_interval(interval = interval, level = level)
   compute_interval <- iv$compute_interval
   interval <- iv$interval
   level <- iv$level
-  x_pred <- .causal_resolve_conditional_x(fit = fit, newdata = newdata, fn = "cqte")
 
   ps_meta <- fit$bundle$meta$ps %||% list()
   ps_enabled <- isTRUE(ps_meta$enabled) && isTRUE(fit$bundle$meta$has_x)
@@ -1036,10 +1082,34 @@ cqte <- function(fit,
       GPD = meta$GPD
     )
   )
-  class(out) <- "causalmixgpd_qte"
+  class(out) <- c("causalmixgpd_qte", "causalmixgpd_effect", "list")
   out
 }
 
+
+#' @export
+cate <- function(fit,
+                 newdata = NULL,
+                 type = c("mean", "rmean"),
+                 cutoff = NULL,
+                 interval = "credible",
+                 level = 0.95,
+                 nsim_mean = 200L,
+                 show_progress = TRUE) {
+  UseMethod("cate")
+}
+
+#' @export
+cate.default <- function(fit,
+                         newdata = NULL,
+                         type = c("mean", "rmean"),
+                         cutoff = NULL,
+                         interval = "credible",
+                         level = 0.95,
+                         nsim_mean = 200L,
+                         show_progress = TRUE) {
+  .causal_validate_fit(fit)
+}
 
 #' Conditional average treatment effects
 #'
@@ -1106,8 +1176,10 @@ cqte <- function(fit,
 #' cate(fit, interval = "hpd")  # HPD intervals
 #' cate(fit, interval = NULL)   # No intervals
 #' }
+#' @method cate causalmixgpd_causal_fit
+#' @aliases cate
 #' @export
-cate <- function(fit,
+cate.causalmixgpd_causal_fit <- function(fit,
                 newdata = NULL,
                 type = c("mean", "rmean"),
                 cutoff = NULL,
@@ -1115,7 +1187,12 @@ cate <- function(fit,
                 level = 0.95,
                 nsim_mean = 200L,
                 show_progress = TRUE) {
-  stopifnot(inherits(fit, "causalmixgpd_causal_fit"))
+  .causal_validate_fit(fit)
+  type <- match.arg(type)
+  nsim_mean <- .causal_validate_nsim_mean(nsim_mean)
+  iv <- .causal_validate_interval(interval = interval, level = level)
+  .causal_require_conditional(fit, fn = "cate")
+  x_pred <- .causal_resolve_conditional_x(fit = fit, newdata = newdata, fn = "cate")
   progress_ctx <- .cmgpd_progress_start(
     total_steps = 5L,
     enabled = isTRUE(show_progress),
@@ -1125,14 +1202,9 @@ cate <- function(fit,
   on.exit(.cmgpd_progress_done(progress_ctx, final_label = NULL), add = TRUE)
   .cmgpd_progress_step(progress_ctx, "Preparing CATE inputs")
 
-  .causal_require_conditional(fit, fn = "cate")
-
-  type <- match.arg(type)
-  iv <- .causal_validate_interval(interval = interval, level = level)
   compute_interval <- iv$compute_interval
   interval <- iv$interval
   level <- iv$level
-  x_pred <- .causal_resolve_conditional_x(fit = fit, newdata = newdata, fn = "cate")
 
   ps_meta <- fit$bundle$meta$ps %||% list()
   ps_enabled <- isTRUE(ps_meta$enabled) && isTRUE(fit$bundle$meta$has_x)
@@ -1268,7 +1340,7 @@ cate <- function(fit,
       GPD = meta$GPD
     )
   )
-  class(out) <- "causalmixgpd_ate"
+  class(out) <- c("causalmixgpd_ate", "causalmixgpd_effect", "list")
   out
 }
 
@@ -1466,7 +1538,7 @@ cate <- function(fit,
     type = effect_type,
     meta = obj$meta %||% list()
   )
-  class(out) <- "causalmixgpd_qte"
+  class(out) <- c("causalmixgpd_qte", "causalmixgpd_effect", "list")
   out
 }
 
@@ -1547,8 +1619,30 @@ cate <- function(fit,
     type = effect_type,
     meta = obj$meta %||% list()
   )
-  class(out) <- "causalmixgpd_ate"
+  class(out) <- c("causalmixgpd_ate", "causalmixgpd_effect", "list")
   out
+}
+
+#' @export
+qte <- function(fit,
+                probs = c(0.1, 0.5, 0.9),
+                newdata = NULL,
+                y = NULL,
+                interval = "credible",
+                level = 0.95,
+                show_progress = TRUE) {
+  UseMethod("qte")
+}
+
+#' @export
+qte.default <- function(fit,
+                        probs = c(0.1, 0.5, 0.9),
+                        newdata = NULL,
+                        y = NULL,
+                        interval = "credible",
+                        level = 0.95,
+                        show_progress = TRUE) {
+  .causal_validate_fit(fit)
 }
 
 #' Quantile treatment effects, marginal over the empirical covariate distribution
@@ -1599,15 +1693,19 @@ cate <- function(fit,
 #' fit <- run_mcmc_causal(cb, show_progress = FALSE)
 #' qte(fit, probs = c(0.5, 0.9))
 #' }
+#' @method qte causalmixgpd_causal_fit
+#' @aliases qte
 #' @export
-qte <- function(fit,
+qte.causalmixgpd_causal_fit <- function(fit,
                 probs = c(0.1, 0.5, 0.9),
                 newdata = NULL,
                 y = NULL,
                 interval = "credible",
                 level = 0.95,
                 show_progress = TRUE) {
-  stopifnot(inherits(fit, "causalmixgpd_causal_fit"))
+  .causal_validate_fit(fit)
+  probs <- .causal_validate_probs(probs)
+  iv <- .causal_validate_interval(interval = interval, level = level)
   progress_ctx <- .cmgpd_progress_start(
     total_steps = 5L,
     enabled = isTRUE(show_progress),
@@ -1618,11 +1716,6 @@ qte <- function(fit,
   .cmgpd_progress_step(progress_ctx, "Preparing QTE inputs")
 
   .causal_warn_ignored_marginal_inputs(fn = "qte", newdata = newdata, y = y, conditional_fn = "cqte")
-  probs <- as.numeric(probs)
-  if (!length(probs) || anyNA(probs) || any(!is.finite(probs)) || any(probs <= 0 | probs >= 1)) {
-    stop("'probs' must be a numeric vector with values strictly between 0 and 1.", call. = FALSE)
-  }
-  iv <- .causal_validate_interval(interval = interval, level = level)
   compute_interval <- iv$compute_interval
   interval <- iv$interval
   level <- iv$level
@@ -1722,7 +1815,7 @@ qte <- function(fit,
 #' where marginalization is over the empirical covariate distribution of the
 #' treated units only.
 #'
-#' @inheritParams qte
+#' @inheritParams qte.causalmixgpd_causal_fit
 #' @return An object of class \code{"causalmixgpd_qte"} containing the QTT
 #'   summary, the probability grid, and the arm-specific predictive objects used
 #'   in the aggregation. The returned object includes a top-level
@@ -1748,7 +1841,9 @@ qtt <- function(fit,
                 interval = "credible",
                 level = 0.95,
                 show_progress = TRUE) {
-  stopifnot(inherits(fit, "causalmixgpd_causal_fit"))
+  .causal_validate_fit(fit)
+  probs <- .causal_validate_probs(probs)
+  iv <- .causal_validate_interval(interval = interval, level = level)
   progress_ctx <- .cmgpd_progress_start(
     total_steps = 5L,
     enabled = isTRUE(show_progress),
@@ -1759,11 +1854,6 @@ qtt <- function(fit,
   .cmgpd_progress_step(progress_ctx, "Preparing QTT inputs")
 
   .causal_warn_ignored_marginal_inputs(fn = "qtt", newdata = newdata, y = y, conditional_fn = "cqte")
-  probs <- as.numeric(probs)
-  if (!length(probs) || anyNA(probs) || any(!is.finite(probs)) || any(probs <= 0 | probs >= 1)) {
-    stop("'probs' must be a numeric vector with values strictly between 0 and 1.", call. = FALSE)
-  }
-  iv <- .causal_validate_interval(interval = interval, level = level)
   compute_interval <- iv$compute_interval
   interval <- iv$interval
   level <- iv$level
@@ -1853,6 +1943,32 @@ qtt <- function(fit,
   .causal_aggregate_qte(cq, idx = idx, effect_type = "qtt")
 }
 
+#' @export
+ate <- function(fit,
+                newdata = NULL,
+                y = NULL,
+                type = c("mean", "rmean"),
+                cutoff = NULL,
+                interval = "credible",
+                level = 0.95,
+                nsim_mean = 200L,
+                show_progress = TRUE) {
+  UseMethod("ate")
+}
+
+#' @export
+ate.default <- function(fit,
+                        newdata = NULL,
+                        y = NULL,
+                        type = c("mean", "rmean"),
+                        cutoff = NULL,
+                        interval = "credible",
+                        level = 0.95,
+                        nsim_mean = 200L,
+                        show_progress = TRUE) {
+  .causal_validate_fit(fit)
+}
+
 #' Average treatment effects, marginal over the empirical covariate distribution
 #'
 #' \code{ate()} computes the posterior predictive average treatment effect.
@@ -1911,8 +2027,10 @@ qtt <- function(fit,
 #' fit <- run_mcmc_causal(cb, show_progress = FALSE)
 #' ate(fit, interval = "credible", level = 0.90, nsim_mean = 100)
 #' }
+#' @method ate causalmixgpd_causal_fit
+#' @aliases ate
 #' @export
-ate <- function(fit,
+ate.causalmixgpd_causal_fit <- function(fit,
                 newdata = NULL,
                 y = NULL,
                 type = c("mean", "rmean"),
@@ -1921,7 +2039,10 @@ ate <- function(fit,
                 level = 0.95,
                 nsim_mean = 200L,
                 show_progress = TRUE) {
-  stopifnot(inherits(fit, "causalmixgpd_causal_fit"))
+  .causal_validate_fit(fit)
+  type <- match.arg(type)
+  nsim_mean <- .causal_validate_nsim_mean(nsim_mean)
+  iv <- .causal_validate_interval(interval = interval, level = level)
   progress_ctx <- .cmgpd_progress_start(
     total_steps = 5L,
     enabled = isTRUE(show_progress),
@@ -1932,8 +2053,6 @@ ate <- function(fit,
   .cmgpd_progress_step(progress_ctx, "Preparing ATE inputs")
 
   .causal_warn_ignored_marginal_inputs(fn = "ate", newdata = newdata, y = y, conditional_fn = "cate")
-  type <- match.arg(type)
-  iv <- .causal_validate_interval(interval = interval, level = level)
   compute_interval <- iv$compute_interval
   interval <- iv$interval
   level <- iv$level
@@ -2038,7 +2157,7 @@ ate <- function(fit,
 #' approximated by marginalizing over the empirical covariate distribution of
 #' treated units.
 #'
-#' @inheritParams ate
+#' @inheritParams ate.causalmixgpd_causal_fit
 #' @return An object of class \code{"causalmixgpd_ate"} containing the ATT
 #'   summary, optional intervals, and the arm-specific predictive objects used
 #'   in the aggregation. The returned object includes a top-level
@@ -2066,7 +2185,10 @@ att <- function(fit,
                 level = 0.95,
                 nsim_mean = 200L,
                 show_progress = TRUE) {
-  stopifnot(inherits(fit, "causalmixgpd_causal_fit"))
+  .causal_validate_fit(fit)
+  type <- match.arg(type)
+  nsim_mean <- .causal_validate_nsim_mean(nsim_mean)
+  iv <- .causal_validate_interval(interval = interval, level = level)
   progress_ctx <- .cmgpd_progress_start(
     total_steps = 5L,
     enabled = isTRUE(show_progress),
@@ -2077,8 +2199,6 @@ att <- function(fit,
   .cmgpd_progress_step(progress_ctx, "Preparing ATT inputs")
 
   .causal_warn_ignored_marginal_inputs(fn = "att", newdata = newdata, y = y, conditional_fn = "cate")
-  type <- match.arg(type)
-  iv <- .causal_validate_interval(interval = interval, level = level)
   compute_interval <- iv$compute_interval
   interval <- iv$interval
   level <- iv$level
@@ -2184,7 +2304,7 @@ att <- function(fit,
 #' \eqn{\min\{Y(a), c\}}, so the contrast remains finite even when the fitted
 #' GPD tail implies \eqn{\xi \ge 1}.
 #'
-#' @inheritParams cate
+#' @inheritParams cate.causalmixgpd_causal_fit
 #' @param cutoff Finite numeric cutoff for the restricted mean.
 #' @return A \code{"causalmixgpd_ate"} object computed via \code{\link{ate}}
 #'   for unconditional fits or \code{\link{cate}} for conditional fits. The
@@ -2212,6 +2332,9 @@ ate_rmean <- function(fit,
                       level = 0.95,
                       nsim_mean = 200L,
                       show_progress = TRUE) {
+  .causal_validate_fit(fit)
+  .causal_validate_interval(interval = interval, level = level)
+  nsim_mean <- .causal_validate_nsim_mean(nsim_mean)
   if (.causal_is_conditional_model(fit)) {
     cate(fit = fit,
          newdata = newdata,
@@ -3168,7 +3291,7 @@ predict.causalmixgpd_causal_fit <- function(object,
     inv_link <- if (model_type == "logit") plogis else if (model_type == "probit") pnorm else plogis
 
     # Posterior predictive PS: average inverse link over beta draws
-    eta <- beta_mat %*% t(design)  # S x n_pred
+    eta <- tcrossprod(beta_mat, design)  # S x n_pred
     ps_draws <- inv_link(eta)
     ps_vec <- if (summary == "mean") {
       colMeans(ps_draws)

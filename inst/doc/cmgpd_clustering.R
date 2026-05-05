@@ -128,10 +128,13 @@ z_test
 ## ----test-cluster-profiles-display, eval=FALSE--------------------------------
 # summary(
 #   predict(fit_cluster, newdata = test_dat, type = "label", return_scores = TRUE)
-# )$cluster_profiles
+# )
+# cluster_profiles(
+#   predict(fit_cluster, newdata = test_dat, type = "label", return_scores = TRUE)
+# )
 
 ## ----test-cluster-profiles, echo=FALSE----------------------------------------
-clust_out$cluster_profiles
+cluster_profiles(z_test)
 
 ## ----sizes-plot-test-display, eval=FALSE--------------------------------------
 # plot(z_test, type = "sizes")

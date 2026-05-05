@@ -73,12 +73,10 @@ accidental large matrix allocations.
 \code{\link[=summary.dpmixgpd_cluster_psm]{summary.dpmixgpd_cluster_psm()}}.
 
 Other cluster workflow: 
+\code{\link{cluster_profiles}()},
 \code{\link{dpmgpd.cluster}()},
 \code{\link{dpmix.cluster}()},
 \code{\link{plot.dpmixgpd_cluster_bundle}()},
-\code{\link{plot.dpmixgpd_cluster_fit}()},
-\code{\link{plot.dpmixgpd_cluster_labels}()},
-\code{\link{plot.dpmixgpd_cluster_psm}()},
 \code{\link{print.dpmixgpd_cluster_bundle}()},
 \code{\link{print.dpmixgpd_cluster_fit}()},
 \code{\link{print.dpmixgpd_cluster_labels}()},

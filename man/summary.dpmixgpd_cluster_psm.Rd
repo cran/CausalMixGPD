@@ -26,12 +26,10 @@ near one indicate highly stable co-clustering across retained posterior draws.
 \code{\link[=summary.dpmixgpd_cluster_fit]{summary.dpmixgpd_cluster_fit()}}.
 
 Other cluster workflow: 
+\code{\link{cluster_profiles}()},
 \code{\link{dpmgpd.cluster}()},
 \code{\link{dpmix.cluster}()},
 \code{\link{plot.dpmixgpd_cluster_bundle}()},
-\code{\link{plot.dpmixgpd_cluster_fit}()},
-\code{\link{plot.dpmixgpd_cluster_labels}()},
-\code{\link{plot.dpmixgpd_cluster_psm}()},
 \code{\link{predict.dpmixgpd_cluster_fit}()},
 \code{\link{print.dpmixgpd_cluster_bundle}()},
 \code{\link{print.dpmixgpd_cluster_fit}()},

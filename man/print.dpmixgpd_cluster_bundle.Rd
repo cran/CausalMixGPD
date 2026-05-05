@@ -32,12 +32,10 @@ matches the requested clustering structure before you run MCMC with
 \code{\link[=dpmix.cluster]{dpmix.cluster()}}, \code{\link[=dpmgpd.cluster]{dpmgpd.cluster()}}, \code{\link[=summary.dpmixgpd_cluster_bundle]{summary.dpmixgpd_cluster_bundle()}}.
 
 Other cluster workflow: 
+\code{\link{cluster_profiles}()},
 \code{\link{dpmgpd.cluster}()},
 \code{\link{dpmix.cluster}()},
 \code{\link{plot.dpmixgpd_cluster_bundle}()},
-\code{\link{plot.dpmixgpd_cluster_fit}()},
-\code{\link{plot.dpmixgpd_cluster_labels}()},
-\code{\link{plot.dpmixgpd_cluster_psm}()},
 \code{\link{predict.dpmixgpd_cluster_fit}()},
 \code{\link{print.dpmixgpd_cluster_fit}()},
 \code{\link{print.dpmixgpd_cluster_labels}()},

@@ -144,7 +144,7 @@ check_glue_validity <- function(fit,
           for (j in seq_along(beta_cols)) {
             beta_mat[idx1[j], idx2[j]] <- draw_mat[s, beta_cols[j]]
           }
-          eta_mat <- X %*% t(beta_mat)
+          eta_mat <- tcrossprod(X, beta_mat)
           out[[nm]] <- .apply_link(eta_mat, link, pw)
         } else {
           beta_cols_1d <- grep(paste0("^beta_", nm, "\\[[0-9]+\\]$"), colnames(draw_mat), value = TRUE)
@@ -157,16 +157,16 @@ check_glue_validity <- function(fit,
             if (length(beta_cols_1d) == Kb * Pb) {
               beta_vec <- as.numeric(draw_mat[s, beta_cols_1d])
               beta_mat <- matrix(beta_vec, nrow = Kb, ncol = Pb)
-              eta_mat <- X %*% t(beta_mat)
+              eta_mat <- tcrossprod(X, beta_mat)
               out[[nm]] <- .apply_link(eta_mat, link, pw)
             } else {
               beta_nm <- .indexed_block(draw_mat, paste0("beta_", nm), K = P)
-              eta <- as.numeric(X %*% beta_nm[s, ])
+              eta <- as.numeric(tcrossprod(X, beta_nm[s, , drop = FALSE]))
               out[[nm]] <- matrix(as.numeric(.apply_link(eta, link, pw)), nrow = n_x)
             }
           } else {
             beta_nm <- .indexed_block(draw_mat, paste0("beta_", nm), K = P)
-            eta <- as.numeric(X %*% beta_nm[s, ])
+            eta <- as.numeric(tcrossprod(X, beta_nm[s, , drop = FALSE]))
             out[[nm]] <- matrix(as.numeric(.apply_link(eta, link, pw)), nrow = n_x)
           }
         }
@@ -213,7 +213,7 @@ check_glue_validity <- function(fit,
         thr_link <- gpd_plan$threshold$link %||% "exp"
         thr_power <- gpd_plan$threshold$link_power %||% NULL
         for (s in seq_len(S)) {
-          eta <- as.numeric(X %*% beta_thr[s, ])
+          eta <- as.numeric(tcrossprod(X, beta_thr[s, , drop = FALSE]))
           threshold_mat[s, ] <- as.numeric(.apply_link(eta, thr_link, thr_power))
         }
       } else {
@@ -236,7 +236,7 @@ check_glue_validity <- function(fit,
         ts_link <- gpd_plan$tail_scale$link %||% "exp"
         ts_power <- gpd_plan$tail_scale$link_power %||% NULL
         for (s in seq_len(S)) {
-          eta <- as.numeric(X %*% beta_ts[s, ])
+          eta <- as.numeric(tcrossprod(X, beta_ts[s, , drop = FALSE]))
           tail_scale[s, ] <- as.numeric(.apply_link(eta, ts_link, ts_power))
         }
       } else if ("tail_scale" %in% colnames(draw_mat)) {
@@ -256,7 +256,7 @@ check_glue_validity <- function(fit,
         tsh_link <- gpd_plan$tail_shape$link %||% "identity"
         tsh_power <- gpd_plan$tail_shape$link_power %||% NULL
         for (s in seq_len(S)) {
-          eta <- as.numeric(X %*% beta_tsh[s, ])
+          eta <- as.numeric(tcrossprod(X, beta_tsh[s, , drop = FALSE]))
           tail_shape[s, ] <- as.numeric(.apply_link(eta, tsh_link, tsh_power))
         }
       } else if ("tail_shape" %in% colnames(draw_mat)) {
@@ -370,7 +370,7 @@ check_glue_validity <- function(fit,
       ent <- spliced_gpd_link[[nm]]
       beta_mat <- ent$beta[s, , , drop = TRUE]
       if (is.null(dim(beta_mat))) beta_mat <- matrix(beta_mat, nrow = ncol(W_draws), ncol = P)
-      eta_mat <- X %*% t(beta_mat)
+      eta_mat <- tcrossprod(X, beta_mat)
       out[[nm]] <- .apply_link(eta_mat, ent$link, ent$link_power)
     }
     out
